@@ -41,7 +41,7 @@ public class BatchToStream {
 //				);
 		DataSet<String> a = env.readTextFile("/home/maqy/桌面/out/test");
 
-		DataSet<Tuple3<String, Integer, Integer>> b = a.flatMap(new WordCount.LineSplitter());
+		DataSet<Tuple3<String, Integer, Integer>> b = a.flatMap(new LineSplitter());
 
 		//DataSet<Tuple2<String, Integer>> d = b.sum(1);
 		DataSet<Tuple3<String, Integer, Integer>> c = b.groupBy(0)
