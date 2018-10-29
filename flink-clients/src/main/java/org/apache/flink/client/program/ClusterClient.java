@@ -368,11 +368,11 @@ public abstract class ClusterClient {
 		//这个run（）是用 flink run -c 这种命令行的形式提交，跳转过来的
 		Thread.currentThread().setContextClassLoader(prog.getUserCodeClassLoader());
 
-		System.out.println("maqy ClusterClient类中 ， 这里是命令行形式的最开始的run~~~！");
+		System.out.println("maqy add,ClusterClient line 371");
 		//如果包含入口类（非交互模式提交Job）
 		if (prog.isUsingProgramEntryPoint()) {
 
-			System.out.println("maqy ClusterClient类中  非交互式提交Job");
+			System.out.println("maqy add, ClusterClient375  非交互式提交Job");
 			//JobWithJars是一个flink数据流计划，包含了jar中所有的类，以及用于加载用户代码的ClassLoader
 			final JobWithJars jobWithJars;
 			if (hasUserJarsInClassPath(prog.getAllLibraries())) {
@@ -385,7 +385,7 @@ public abstract class ClusterClient {
 		}
 		else if (prog.isUsingInteractiveMode()) {
 
-			System.out.println("maqy ClusterClient类中  用交互式提交Job");
+			System.out.println("maqy add, ClusterClient,388  用交互式提交Job");
 			log.info("Starting program in interactive mode");
 
 			final List<URL> libraries;
@@ -402,6 +402,7 @@ public abstract class ClusterClient {
 
 			try {
 				// invoke main method
+				//这是客户端生成初步逻辑计划的核心逻辑,也就是生成最初的plan等。其实这里只是调用了用户jar包的主函数，真正的触发生成过程由用户代码的执行来完成。
 				prog.invokeInteractiveModeForExecution();
 				if (lastJobExecutionResult == null && factory.getLastEnvCreated() == null) {
 					throw new ProgramMissingJobException("The program didn't contain a Flink job.");
@@ -453,7 +454,7 @@ public abstract class ClusterClient {
 		if (classLoader == null) {
 			throw new IllegalArgumentException("The given JobWithJars does not provide a usercode class loader.");
 		}
-		System.out.println("maqy 命令行和batch的run，有得到OptimizedPlan的");
+		System.out.println("maqy add,ClusterClient line 457，通过ContextEnvironment类跳转而来，有得到OptimizedPlan的run()方法");
 		//这里根据流或批，为每一个operator进行优化，例如shuffle的方式，hash join、sort-merge join或者广播等进行优化
 		OptimizedPlan optPlan = getOptimizedPlan(compiler, jobWithJars, parallelism);
 		//根据优化后的执行计划，jar文件，classpath，类加载器，保存点设置运行
@@ -463,7 +464,7 @@ public abstract class ClusterClient {
 	public JobSubmissionResult run(
 		FlinkPlan compiledPlan, List<URL> libraries, List<URL> classpaths, ClassLoader classLoader) throws ProgramInvocationException {
 		//从RemoteStreamEnvironment跳转过来
-		System.out.println("maqy ClusterClient run()从RemoteStreamEnvironment跳转过来的");
+		System.out.println("maqy add,ClusterClient line467, RemoteStreamEnvironment跳转过来");
 		return run(compiledPlan, libraries, classpaths, classLoader, SavepointRestoreSettings.none());
 	}
 
@@ -471,7 +472,7 @@ public abstract class ClusterClient {
 		throws ProgramInvocationException {
 		//maqy this is from batch，同时也从上一个run（）方法跳转过来,在这里流处理和批处理开始统一
 		//生成JobGraph，并将JobGraph提交到JobManager
-		System.out.println("maqy ClusterClient 批流统一后的run（）");
+		System.out.println("maqy add, ClusterClient line 475,批流统一后的run（）,该方法中得到JobGraph");
 		JobGraph job = getJobGraph(compiledPlan, libraries, classpaths, savepointSettings);
 		return submitJob(job, classLoader);
 	}
@@ -500,6 +501,7 @@ public abstract class ClusterClient {
 		try {
 			logAndSysout("Submitting job with JobID: " + jobGraph.getJobID() + ". Waiting for job completion.");
 			// 调用JobClient的submitJobAndWait方法，提交Job
+			System.out.println("maqy add,ClusterClient line 504,接下来执行submitJobAndWait()");
 			this.lastJobExecutionResult = JobClient.submitJobAndWait(
 				actorSystem,
 				flinkConfig,

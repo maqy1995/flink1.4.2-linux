@@ -375,6 +375,7 @@ public class JobClient {
 			boolean sysoutLogUpdates,
 			ClassLoader classLoader) throws JobExecutionException {
 
+		//maqy add,JobListeningContext中封装了提交任务后的Future
 		JobListeningContext jobListeningContext = submitJob(
 				actorSystem,
 				config,

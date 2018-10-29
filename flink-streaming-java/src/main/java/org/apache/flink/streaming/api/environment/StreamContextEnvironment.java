@@ -48,7 +48,7 @@ public class StreamContextEnvironment extends StreamExecutionEnvironment {
 
 	@Override
 	public JobExecutionResult execute(String jobName) throws Exception {
-		System.out.println("maqy StreamContextEnvironment  中的execute(String jobName)方法");
+		System.out.println("maqy add ,StreamContextEnvironment line51 ,  中的execute(String jobName)方法");
 		Preconditions.checkNotNull("Streaming Job name should not be null.");
 
 		StreamGraph streamGraph = this.getStreamGraph();
