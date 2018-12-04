@@ -77,7 +77,7 @@ public class JobGraph implements Serializable {
 	private long sessionTimeout = 0;
 
 	/** flag to enable queued scheduling */
-	private boolean allowQueuedScheduling;
+	private boolean allowQueuedScheduling; //标识在无法立即获取部署资源时,是否可以将部署任务入队列
 
 	/** The mode in which the job is scheduled */
 	private ScheduleMode scheduleMode = ScheduleMode.LAZY_FROM_SOURCES;
@@ -384,39 +384,53 @@ public class JobGraph implements Serializable {
 
 	public List<JobVertex> getVerticesSortedTopologicallyFromSources() throws InvalidProgramException {
 		// early out on empty lists
+		//节点集合为空时,可以快速退出
 		if (this.taskVertices.isEmpty()) {
 			return Collections.emptyList();
 		}
 
+		//从source开始的,排好序的JobVertex列表
 		List<JobVertex> sorted = new ArrayList<JobVertex>(this.taskVertices.size());
+		//还没有进入sorted集合,等待排序的JobVertex集合,初始值就是JobGraph中所有JobVertex的集合
 		Set<JobVertex> remaining = new LinkedHashSet<JobVertex>(this.taskVertices.values());
 
 		// start by finding the vertices with no input edges
 		// and the ones with disconnected inputs (that refer to some standalone data set)
+		//找出数据源节点,也就是那些没有输入的JobVertex,以及指向独立数据集的JobVertex
 		{
 			Iterator<JobVertex> iter = remaining.iterator();
 			while (iter.hasNext()) {
 				JobVertex vertex = iter.next();
 
+				//如果该节点没有任何输入,则表示该节点是数据源,添加到sorted集合,同时从remaining集合中移除
 				if (vertex.hasNoConnectedInputs()) {
 					sorted.add(vertex);
-					iter.remove();
+					iter.remove();//删除reamaining中刚加入到sorted的元素
 				}
 			}
 		}
 
+		//sorted集合中开始遍历的起始位置,也就是从第一个元素开始遍历
 		int startNodePos = 0;
 
 		// traverse from the nodes that were added until we found all elements
+		//遍历已经添加的节点,直到找出所有元素
 		while (!remaining.isEmpty()) {
 
 			// first check if we have more candidates to start traversing from. if not, then the
 			// graph is cyclic, which is not permitted
+			//处理一个节点后,startNodePos就会加1, * 如果startNodePos大于sorted的集合中元素个数,
+			// * 则说明经过一次处理,并没有找到新的JobVertex添加到sorted集合中,这表明在graph中存在了循环,这是不允许的
 			if (startNodePos >= sorted.size()) {
 				throw new InvalidProgramException("The job graph is cyclic.");
 			}
 
+			//获取当前要处理的JobVertex
 			JobVertex current = sorted.get(startNodePos++);
+			//遍历当前JobVertex的下游节点
+			// 上述逻辑就是首先从JobGraph的所有JobVertex集合中,找出所有的source节点,然后在从这些source节点开始,
+			// 依次遍历其下游节点,当一个节点的所有输入都已经被添加到sorted集合中时,
+			// 它自身就可以添加到sorted集合中了,同时从remining集合中移除。
 			addNodesThatHaveNoNewPredecessors(current, sorted, remaining);
 		}
 
@@ -424,25 +438,33 @@ public class JobGraph implements Serializable {
 	}
 
 	private void addNodesThatHaveNoNewPredecessors(JobVertex start, List<JobVertex> target, Set<JobVertex> remaining) {
-
+		//													current,                sorted,                remaining
 		// forward traverse over all produced data sets and all their consumers
+		//遍历start节点的所有输出中间数据集合
 		for (IntermediateDataSet dataSet : start.getProducedDataSets()) {
-			for (JobEdge edge : dataSet.getConsumers()) {
+			//对于每个中间数据集合,遍历其所有的输出JobEdge
+			for (JobEdge edge : dataSet.getConsumers()) {//edge即中间结果集的消费者
 
 				// a vertex can be added, if it has no predecessors that are still in the 'remaining' set
+				// 如果一个节点的所有输入节点都不在"remaining"集合中,则将这个节点添加到target集合中
 				JobVertex v = edge.getTarget();
-				if (!remaining.contains(v)) {
+				if (!remaining.contains(v)) { //remaining中已经没有该节点了，跳过
 					continue;
 				}
 
-				boolean hasNewPredecessors = false;
+				//一个JobVertex是否还有输入节点在remaining集合中的标识
+				//如果节点v,其所有输入节点都已经不在remaining集合中, * 则说明其输入节点都已经被添加到sorted列表,
+				// 则hasNewPredecessors为false, * 否则hasNewPredecessors的值为true,表示节点v还有输入节点在remaining集合中。
+				boolean hasNewPredecessors = false;  //判断该节点是否还有前驱没有加入到sorted中，没有的话才加入该点
 
 				for (JobEdge e : v.getInputs()) {
 					// skip the edge through which we came
-					if (e == edge) {
+					// 跳过上层循环中遍历到的JobEdge,也就是edge变量
+					if (e == edge) {   //
 						continue;
 					}
 
+					//只要有一个输入还在remaining集合中,说明当前它还不能添加到target集合,直接结束这层内循环
 					IntermediateDataSet source = e.getSource();
 					if (remaining.contains(source.getProducer())) {
 						hasNewPredecessors = true;
@@ -450,10 +472,12 @@ public class JobGraph implements Serializable {
 					}
 				}
 
+				//如果节点v已经没有输入节点还在remaining集合中,则将节点v添加到sorted列表中,
+				// * 同时从remaining集合中删除, * 然后开始递归遍历节点v的下游节点
 				if (!hasNewPredecessors) {
 					target.add(v);
 					remaining.remove(v);
-					addNodesThatHaveNoNewPredecessors(v, target, remaining);
+					addNodesThatHaveNoNewPredecessors(v, target, remaining);//采用的是深度优先的策略
 				}
 			}
 		}

@@ -145,9 +145,11 @@ public class UnionInputGate implements InputGate, InputGateListener {
 		}
 
 		// Make sure to request the partitions, if they have not been requested before.
+		//遍历每个InputGate，依次调用其requestPartitions方法
 		requestPartitions();
 
 		final InputGate inputGate;
+		//阻塞等待输入网关队列中有可获取数据的输入网关
 		synchronized (inputGatesWithData) {
 			while (inputGatesWithData.size() == 0) {
 				inputGatesWithData.wait();
@@ -156,6 +158,7 @@ public class UnionInputGate implements InputGate, InputGateListener {
 			inputGate = inputGatesWithData.remove();
 		}
 
+		//从输入网关中获得数据
 		final BufferOrEvent bufferOrEvent = inputGate.getNextBufferOrEvent();
 
 		if (bufferOrEvent.moreAvailable()) {
@@ -165,10 +168,12 @@ public class UnionInputGate implements InputGate, InputGateListener {
 			queueInputGate(inputGate);
 		}
 
+		//如果获取到的是事件且该事件为EndOfPartitionEvent且输入网关已完成
 		if (bufferOrEvent.isEvent()
 			&& bufferOrEvent.getEvent().getClass() == EndOfPartitionEvent.class
 			&& inputGate.isFinished()) {
 
+			//尝试将该输入网关从仍然可消费数据的输入网关集合中删除
 			if (!inputGatesWithRemainingData.remove(inputGate)) {
 				throw new IllegalStateException("Couldn't find input gate in set of remaining " +
 					"input gates.");
@@ -176,8 +181,10 @@ public class UnionInputGate implements InputGate, InputGateListener {
 		}
 
 		// Set the channel index to identify the input channel (across all unioned input gates)
+		//获得通道索引偏移
 		final int channelIndexOffset = inputGateToIndexOffsetMap.get(inputGate);
 
+		//计算真实通道索引
 		bufferOrEvent.setChannelIndex(channelIndexOffset + bufferOrEvent.getChannelIndex());
 
 		return bufferOrEvent;

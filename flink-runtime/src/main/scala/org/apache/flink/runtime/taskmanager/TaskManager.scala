@@ -121,11 +121,11 @@ import scala.language.postfixOps
 class TaskManager(
     protected val config: TaskManagerConfiguration,
     protected val resourceID: ResourceID,
-    protected val location: TaskManagerLocation,
-    protected val memoryManager: MemoryManager,
-    protected val ioManager: IOManager,
-    protected val network: NetworkEnvironment,
-    protected val numberOfSlots: Int,
+    protected val location: TaskManagerLocation,  //封装了一些TaskManager的连接信息，resourceID,hostName等
+    protected val memoryManager: MemoryManager, //MemoryManager 统一管理了 flink 的内存使用，内存被划分为相同大小的 segment，通过申请不同数量的 segment 来分配不同大小的内存
+    protected val ioManager: IOManager,//IOManager 来控制磁盘 IO 的过程，提供同步和异步两种写模式【其实只有异步】，具体的读写方式又分为 block、buffer、bulk 三种方式；用户可以指定 IO 的文件目录集合，IOManager 会以 round-robin 的方式写不同目录的不同文件。
+    protected val network: NetworkEnvironment,//NetworkEnvironment 是每个 Instance 的网络 IO 组件，包含了追踪中间结果和数据交换的数据结构。它的构造器会统一将配置的内存先分配出来，抽象成 NetworkBufferPool 统一管理内存的申请和释放。
+    protected val numberOfSlots: Int, //通过配置文件得到
     protected val highAvailabilityServices: HighAvailabilityServices,
     protected val taskManagerMetricGroup: TaskManagerMetricGroup)
   extends FlinkActor

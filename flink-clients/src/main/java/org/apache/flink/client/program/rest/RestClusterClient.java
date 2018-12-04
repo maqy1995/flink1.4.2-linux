@@ -98,6 +98,7 @@ public class RestClusterClient extends ClusterClient {
 		log.info("Submitting job.");
 		try {
 			// temporary hack for FLIP-6 since slot-sharing isn't implemented yet
+			System.out.println("maqy add, RestClusterClient line 101.");
 			jobGraph.setAllowQueuedScheduling(true);
 			submitJob(jobGraph);
 		} catch (JobSubmissionException e) {

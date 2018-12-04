@@ -56,7 +56,7 @@ public class ContextEnvironment extends ExecutionEnvironment {
 
 	@Override
 	public JobExecutionResult execute(String jobName) throws Exception {
-		System.out.println("maqy ContextEnvironment 批处理  中的execute(String jobName)方法");
+		System.out.println("maqy add, ContextEnvironment line 59, 批处理中的execute()跳转而来");
 		Plan p = createProgramPlan(jobName);
 		JobWithJars toRun = new JobWithJars(p, this.jarFilesToAttach, this.classpathsToAttach,
 				this.userCodeClassLoader);

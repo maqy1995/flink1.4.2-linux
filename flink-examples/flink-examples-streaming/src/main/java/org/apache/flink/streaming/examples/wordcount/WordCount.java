@@ -94,7 +94,7 @@ public class WordCount {
 //		} else {
 //			System.out.println("Printing result to stdout. Use --output to specify output path.");
 //			counts.print();
-//		}
+//		}predecessors
 		if (args.length == 2) {
 			counts.writeAsText(args[1]);
 		} else {

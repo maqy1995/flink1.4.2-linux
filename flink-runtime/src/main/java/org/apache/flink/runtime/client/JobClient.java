@@ -113,6 +113,7 @@ public class JobClient {
 
 		ActorRef jobClientActor = actorSystem.actorOf(jobClientActorProps);
 
+		//这里有写message的类型是SubmitJobAndWait
 		Future<Object> submissionFuture = Patterns.ask(
 				jobClientActor,
 				new JobClientMessages.SubmitJobAndWait(jobGraph),

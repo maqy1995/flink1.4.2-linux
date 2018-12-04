@@ -69,7 +69,7 @@ public class MemoryManager {
 	private final Object lock = new Object();
 
 	/** The memory pool from which we draw memory segments. Specific to on-heap or off-heap memory */
-	private final MemoryPool memoryPool;
+	private final MemoryPool memoryPool; //MemoryPool 是 MemoryManager 用来统一管理资源的组件，具体又分为 HeapMemoryPool 和 HybridOffHeapMemoryPool，前者管理堆内存，后者管理非堆内存。
 
 	/** Memory segments allocated per memory owner. */
 	private final HashMap<Object, Set<MemorySegment>> allocatedSegments;
@@ -147,6 +147,11 @@ public class MemoryManager {
 		this.roundingMask = ~((long) (pageSize - 1));
 
 		final long numPagesLong = memorySize / pageSize;
+
+		//maqy add
+		LOG.info("maqy add MemoryManager constructor,memoryType="+this.memoryType+",memorySize="
+			+this.memorySize+",numberOfSlots="+this.numberOfSlots+",pageSize="+this.pageSize+",numPagesLong"+numPagesLong);
+
 		if (numPagesLong > Integer.MAX_VALUE) {
 			throw new IllegalArgumentException("The given number of memory bytes (" + memorySize
 					+ ") corresponds to more than MAX_INT pages.");
@@ -586,6 +591,7 @@ public class MemoryManager {
 	// ------------------------------------------------------------------------
 
 	abstract static class MemoryPool {
+		//MemoryPool 是 MemoryManager 用来统一管理资源的组件，具体又分为 HeapMemoryPool 和 HybridOffHeapMemoryPool，前者管理堆内存，后者管理非堆内存。
 
 		abstract int getNumberOfAvailableMemorySegments();
 
@@ -614,11 +620,13 @@ public class MemoryManager {
 			}
 		}
 
+		//allocateNewSegment 走的是 on demand 模式，通过 new byte[] 从堆上分配内存
 		@Override
 		MemorySegment allocateNewSegment(Object owner) {
 			return MemorySegmentFactory.allocateUnpooledSegment(segmentSize, owner);
 		}
 
+		//requestSegmentFromPool 走的是 pre allocate 模式，通过复用已有的堆对象
 		@Override
 		MemorySegment requestSegmentFromPool(Object owner) {
 			byte[] buf = availableMemory.remove();

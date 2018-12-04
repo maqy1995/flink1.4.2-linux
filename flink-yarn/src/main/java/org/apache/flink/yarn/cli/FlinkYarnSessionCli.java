@@ -676,7 +676,7 @@ public class FlinkYarnSessionCli implements CustomCommandLine<YarnClusterClient>
 			final ClusterSpecification clusterSpecification = createClusterSpecification(yarnDescriptor.getFlinkConfiguration(), cmd);
 
 			try {
-				yarnCluster = yarnDescriptor.deploySessionCluster(clusterSpecification);
+				yarnCluster = yarnDescriptor.deploySessionCluster(clusterSpecification); //这里触发了集群部署
 			} catch (Exception e) {
 				System.err.println("Error while deploying YARN cluster: " + e.getMessage());
 				e.printStackTrace(System.err);

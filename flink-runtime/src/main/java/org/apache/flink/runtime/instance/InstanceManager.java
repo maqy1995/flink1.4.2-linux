@@ -145,6 +145,7 @@ public class InstanceManager {
 				throw new IllegalStateException("InstanceManager is shut down.");
 			}
 
+			//先判断该taskManager是否已经注册，通过ResourceID来判断。
 			Instance prior = registeredHostsByResource.get(taskManagerLocation.getResourceID());
 			if (prior != null) {
 				throw new IllegalStateException("Registration attempt from TaskManager at "

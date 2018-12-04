@@ -191,6 +191,19 @@ class LocalBufferPool implements BufferPool {
 		return requestBuffer(true);
 	}
 
+	/**
+	 * 申请buffer：
+	 * 1.申请 Buffer
+	 * 2.释放超量申请的 Buffer
+	 * 3.像 NetworkBufferPool 申请 Buffer
+	 * 4.如果此 LocalBufferPool 有 owner【ResultPartition】，像 ResultPartition 释放内存，
+	 * 这里又会下发到 ResultPartition 的 subPartition，释放是以 subPartition 的全部内存为单位，
+	 * 会将内存中的数据吐到磁盘上或者不释放【依据配置的不同】
+	 * @param isBlocking
+	 * @return
+	 * @throws InterruptedException
+	 * @throws IOException
+	 */
 	private Buffer requestBuffer(boolean isBlocking) throws InterruptedException, IOException {
 		synchronized (availableMemorySegments) {
 			returnExcessMemorySegments();
@@ -230,6 +243,13 @@ class LocalBufferPool implements BufferPool {
 		}
 	}
 
+	/**
+	 * 回收buffer：
+	 * 1.如果此 LocalBuffer 已销毁或超量使用，将 Buffer 归还给 NetworkBufferPool
+	 * 2.否则如果注册了 EventListener ，通知每个 listener 这个 Buffer 被回收
+	 * 3.如果没有注册，将这个 Buffer 重新标记为可使用【加入到待申请队列】
+	 * @param segment
+	 */
 	@Override
 	public void recycle(MemorySegment segment) {
 		synchronized (availableMemorySegments) {
@@ -295,6 +315,13 @@ class LocalBufferPool implements BufferPool {
 		}
 	}
 
+	/**
+	 * 调整buffer大小：
+	 * 1.归还超量使用的内存给 NetworkBufferPool
+	 * 2.如果还是超量使用，调用 owner 的释放接口【以 ResultSubPartiton 为单位释放】
+	 * @param numBuffers
+	 * @throws IOException
+	 */
 	@Override
 	public void setNumBuffers(int numBuffers) throws IOException {
 		synchronized (availableMemorySegments) {

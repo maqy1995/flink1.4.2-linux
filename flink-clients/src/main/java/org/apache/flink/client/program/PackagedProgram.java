@@ -522,6 +522,7 @@ public class PackagedProgram {
 		}
 
 		try {
+			//调用主函数
 			mainMethod.invoke(null, (Object) args);
 		}
 		catch (IllegalArgumentException e) {

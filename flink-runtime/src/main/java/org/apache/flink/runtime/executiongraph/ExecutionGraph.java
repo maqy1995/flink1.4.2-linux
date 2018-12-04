@@ -800,13 +800,18 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologiallySorted.size());
 		final long createTimestamp = System.currentTimeMillis();
 
+		//依次顺序遍历排好序的JobVertex集合
 		for (JobVertex jobVertex : topologiallySorted) {
 
+			//对于ExecutionGraph来说,只要有一个不能停止的输入源JobVertex,那ExecutionGraph就是不可停止的
 			if (jobVertex.isInputVertex() && !jobVertex.isStoppable()) {
-				this.isStoppable = false;
+				this.isStoppable = false; //不知道这个值是用来干嘛的
 			}
 
 			// create the execution job vertex and attach it to the graph
+			// 在ExecutionJobVertex的构造器中，将JobVertex的相关信息赋给了ExecutionJobVertex
+			// 创建jobVertex对应的ExecutionJobVertex,其中的第三个构造参数1,就是默认的并行度
+			// 在ExecutionJobVertex的构造函数中,会根据并行度,构造相应的ExecutionVertex数组,该数组的索引就是子任务的索引号;
 			ExecutionJobVertex ejv = new ExecutionJobVertex(
 				this,
 				jobVertex,
@@ -815,14 +820,17 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				globalModVersion,
 				createTimestamp);
 
-			ejv.connectToPredecessors(this.intermediateResults);
-
-			ExecutionJobVertex previousTask = this.tasks.putIfAbsent(jobVertex.getID(), ejv);
-			if (previousTask != null) {
+			// 将新建的ExecutionJobVertex实例, 与其前置处理器建立连接
+			ejv.connectToPredecessors(this.intermediateResults);   //这个intermediateResults第一次还没有初始化，834行会进行添加
+			//通过上一行将每个ExecutionJobVertex与之前的进行了连接，
+			//将构建好的ejv,记录下来,如果发现对一个的jobVertexID已经存在一个ExecutionJobVertex,则需要抛异常
+			ExecutionJobVertex previousTask = this.tasks.putIfAbsent(jobVertex.getID(), ejv); //将该ExecutionJobVertex放入
+			if (previousTask != null) {                                              //返回值不为空说明有两个相同ID的vertex，报错。
 				throw new JobException(String.format("Encountered two job vertices with ID %s : previous=[%s] / new=[%s]",
 						jobVertex.getID(), ejv, previousTask));
 			}
 
+			//将这个ExecutionGraph中所有临时结果IntermediateResult, 都保存到intermediateResults这个map,同样，如果之前就已经有了，说明有问题
 			for (IntermediateResult res : ejv.getProducedDataSets()) {
 				IntermediateResult previousDataSet = this.intermediateResults.putIfAbsent(res.getId(), res);
 				if (previousDataSet != null) {
@@ -831,23 +839,30 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				}
 			}
 
+			//将ejv按创建顺序记录下来
 			this.verticesInCreationOrder.add(ejv);
+			//统计所有ejv的并行度
 			this.numVerticesTotal += ejv.getParallelism();
 			newExecJobVertices.add(ejv);
 		}
 
+		//上述的逻辑是比较清晰的,就是依次遍历排好序的JobVertex集合,并构建相应的ExecutionJobVertex实例,并设置ExecutionGraph中的部分属性。
 		terminationFuture = new CompletableFuture<>();
 		failoverStrategy.notifyNewVertices(newExecJobVertices);
 	}
 
 	public void scheduleForExecution() throws JobException {
 
+		// 将状态从'CREATED’转换为’RUNNING
+		// 状态转换成功,会给状态监听者发送状态变化的消息,然后就根据调度的不同模式,进行不同的调度
 		if (transitionState(JobStatus.CREATED, JobStatus.RUNNING)) {
 
+			//根据调度模式,执行不同的调度策略
 			switch (scheduleMode) {
 
+				//slotProvider是一个接口，JobManager中的Scheduler实现了该接口
 				case LAZY_FROM_SOURCES:
-					scheduleLazy(slotProvider);
+					scheduleLazy(slotProvider); //该模式下,从source节点开始部署执行,成功后,再部署其下游节点,以此类推;批处理是该模式
 					break;
 
 				case EAGER:
@@ -866,7 +881,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	private void scheduleLazy(SlotProvider slotProvider) {
 		// simply take the vertices without inputs.
 		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
-			if (ejv.getJobVertex().isInputVertex()) {
+			if (ejv.getJobVertex().isInputVertex()) { //如果是源节点，则进行调度
 				ejv.scheduleAll(
 					slotProvider,
 					allowQueuedScheduling,
@@ -881,35 +896,49 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * @param slotProvider  The resource provider from which the slots are allocated
 	 * @param timeout       The maximum time that the deployment may take, before a
 	 *                      TimeoutException is thrown.
+	 *
+	 * 整个处理逻辑分为两大步骤:
+	 *
+	 * a、先进行槽位的分配,获取分配的future;
+	 * b、成功获取槽位之后,进行部署,这步也是异步的;
+	 *
+	 * 另外,在槽位分配上,加上了超时机制,如果达到设定时间,槽位还没有分配好,则进行fail操作
 	 */
 	private void scheduleEager(SlotProvider slotProvider, final Time timeout) {
+		//走到这里了,需要再次确认下当前的状态是否是'RUNNING'
 		checkState(state == JobStatus.RUNNING, "job is not running currently");
 
-		// Important: reserve all the space we need up front.
+		// Important: reserve all the space we need up front.保留我们需要的所有空间
 		// that way we do not have any operation that can fail between allocating the slots
 		// and adding them to the list. If we had a failure in between there, that would
 		// cause the slots to get lost
+		//标识在无法立即获取部署资源时,是否可以将部署任务入队列
 		final boolean queued = allowQueuedScheduling;
 
 		// collecting all the slots may resize and fail in that operation without slots getting lost
+		// 用来维护所有槽位申请的future
 		final ArrayList<CompletableFuture<Execution>> allAllocationFutures = new ArrayList<>(getNumberOfExecutionJobVertices());
 
 		// allocate the slots (obtain all their futures
+		// 获取每个ExecutionJobGraph申请槽位的future
 		for (ExecutionJobVertex ejv : getVerticesTopologically()) {
 			// these calls are not blocking, they only return futures
+			// 槽位的申请分配逻辑
 			Collection<CompletableFuture<Execution>> allocationFutures = ejv.allocateResourcesForAll(
 				slotProvider,
 				queued,
-				LocationPreferenceConstraint.ALL);
+				LocationPreferenceConstraint.ALL);//ALL :wait for all inputs to have a location assigned
 
 			allAllocationFutures.addAll(allocationFutures);
 		}
 
 		// this future is complete once all slot futures are complete.
 		// the future fails once one slot future fails.
+		// 将上面的所有future连接成一个future,只有所有的future都成功,才算成功,否则就是失败的
 		final ConjunctFuture<Collection<Execution>> allAllocationsComplete = FutureUtils.combineAll(allAllocationFutures);
 
 		// make sure that we fail if the allocation timeout was exceeded
+		// 构建一个定时任务,用来检查槽位分配是否超时
 		final ScheduledFuture<?> timeoutCancelHandle = futureExecutor.schedule(new Runnable() {
 			@Override
 			public void run() {
@@ -920,25 +949,30 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				String message = "Could not allocate all requires slots within timeout of " +
 						timeout + ". Slots required: " + numTotal + ", slots allocated: " + numComplete;
 
+				//如果超时,则以异常的方式结束分配
 				allAllocationsComplete.completeExceptionally(new NoResourceAvailableException(message));
 			}
 		}, timeout.getSize(), timeout.getUnit());
 
 
+		//根据槽位分配,进行异步调用执行
 		allAllocationsComplete.handleAsync(
 			(Collection<Execution> executions, Throwable throwable) -> {
 				try {
 					// we do not need the cancellation timeout any more
+					// 取消上面的超时检查任务
 					timeoutCancelHandle.cancel(false);
 
 					if (throwable == null) {
 						// successfully obtained all slots, now deploy
+						// 成功获取所需槽位, 现在开始部署
 						for (Execution execution : executions) {
 							execution.deploy();
 						}
 					}
 					else {
 						// let the exception handler deal with this
+						//抛出异常, 让异常句柄处理这个
 						throw throwable;
 					}
 				}

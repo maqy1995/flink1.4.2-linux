@@ -24,6 +24,9 @@ import java.io.IOException;
 
 /**
  * A single subpartition of a {@link ResultPartition} instance.
+ * 两个实现：
+ * PipelinedSubpartition：基于内存的管道模式的结果子分区；
+ * SpillableSubpartition：基础模式下是基于内存的阻塞式的结果子分区，但数据量过大时可以将数据溢出到磁盘；
  */
 public abstract class ResultSubpartition {
 

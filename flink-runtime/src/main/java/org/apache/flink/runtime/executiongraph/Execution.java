@@ -407,6 +407,19 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 * @return Future which is completed with this execution once the slot has been assigned
 	 * 			or with an exception if an error occurred.
 	 * @throws IllegalExecutionStateException if this method has been called while not being in the CREATED state
+	 *
+	 * a、将状态从’CREATED’成功转换成’SCHEDULED’;
+	 * b、根据LocationPreferenceConstraint的设置,为这个Execution指定优先分配槽位所在的TaskManager;
+	 * c、基于上述步骤获取的偏好位置,进行slot分配;
+	 * d、在slot分配成功后,将slot设定给当前Execution,如果设定成功,则返回相应的slot,否则是否slot,然后抛出异常。
+	 *
+	 * 其中LocationPreferenceConstraint有两种取值:
+	 *
+	 * a、ALL —— 需要确认其所有的输入都已经分配好slot,然后基于其输入所在的TaskManager,作为其偏好位置集合;
+	 * b、ANY —— 只考虑那些slot已经分配好的输入所在的TaskManager,作为偏好位置集合;
+	 *
+	 * 某个Execution的偏好位置的计算逻辑,是先由其对应的ExecutionVertex基于所有输入,获取偏好位置集合,
+	 * 然后根据LocationPreferenceConstraint的策略不同,删选出一个子集,作为这个Execution的偏好位置集合。
 	 */
 	public CompletableFuture<Execution> allocateAndAssignSlotForExecution(
 			SlotProvider slotProvider,
@@ -415,38 +428,44 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 		checkNotNull(slotProvider);
 
+		//获取在构建JobVertex时已经赋值好的SlotSharingGroup实例和CoLocationConstraint实例,如果有的话
 		final SlotSharingGroup sharingGroup = vertex.getJobVertex().getSlotSharingGroup();
 		final CoLocationConstraint locationConstraint = vertex.getLocationConstraint();
 
 		// sanity check
+		//位置约束不为null, 而共享组为null, 这种情况是不可能出现的, 出现了肯定就是异常了
 		if (locationConstraint != null && sharingGroup == null) {
 			throw new IllegalStateException(
 					"Trying to schedule with co-location constraint but without slot sharing allowed.");
 		}
 
 		// this method only works if the execution is in the state 'CREATED'
+		//只有状态是 'CREATED' 时, 这个方法才能正常工作
 		if (transitionState(CREATED, SCHEDULED)) {
 
+			//ScheduleUnit 实例就是在这里构造出来的
 			ScheduledUnit toSchedule = locationConstraint == null ?
 					new ScheduledUnit(this, sharingGroup) :
 					new ScheduledUnit(this, sharingGroup, locationConstraint);
 
 			// calculate the preferred locations
+			//获取当前任务分配槽位所在节点的"偏好位置集合",也就是分配时,优先考虑分配在这些节点上
 			final CompletableFuture<Collection<TaskManagerLocation>> preferredLocationsFuture = calculatePreferredLocations(locationPreferenceConstraint);
 
 			return preferredLocationsFuture
 				.thenCompose(
 					(Collection<TaskManagerLocation> preferredLocations) ->
-						slotProvider.allocateSlot(
+						slotProvider.allocateSlot( //在获取输入节点的位置之后,将其作为偏好位置集合,基于这些偏好位置,申请分配一个slot
 							toSchedule,
 							queued,
 							preferredLocations))
 				.thenApply(
 					(SimpleSlot slot) -> {
 						if (tryAssignResource(slot)) {
-							return this;
+							return this;  //如果slot分配成功,则返回这个future
 						} else {
 							// release the slot
+							// 释放slot
 							slot.releaseSlot();
 
 							throw new CompletionException(new FlinkException("Could not assign slot " + slot + " to execution " + this + " because it has already been assigned "));
@@ -472,22 +491,26 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		// Check if the TaskManager died in the meantime
 		// This only speeds up the response to TaskManagers failing concurrently to deployments.
 		// The more general check is the timeout of the deployment call
+		// 检查slot是否alive
 		if (!slot.isAlive()) {
 			throw new JobException("Target slot (TaskManager) for deployment is no longer alive.");
 		}
 
 		// make sure exactly one deployment call happens from the correct state
 		// note: the transition from CREATED to DEPLOYING is for testing purposes only
+		//确保在正确的状态的情况下进行部署调用 * 注意:从 CREATED to DEPLOYING 只是用来测试的
 		ExecutionState previous = this.state;
 		if (previous == SCHEDULED || previous == CREATED) {
 			if (!transitionState(previous, DEPLOYING)) {
 				// race condition, someone else beat us to the deploying call.
 				// this should actually not happen and indicates a race somewhere else
+				// 竞态条件,有人在部署调用上击中我们了(其实就是冲突了) * 这个在真实情况下不该发生,如果发生,则说明有地方发生冲突了
 				throw new IllegalStateException("Cannot deploy task: Concurrent deployment call race.");
 			}
 		}
 		else {
 			// vertex may have been cancelled, or it was already scheduled
+			// 能已经被取消了,或者已经被调度了
 			throw new IllegalStateException("The vertex must be in CREATED or SCHEDULED state to be deployed. Found state " + previous);
 		}
 
@@ -498,6 +521,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			}
 
 			// race double check, did we fail/cancel and do we need to release the slot?
+			//双重校验,是我们 失败/取消 ? 我们需要释放这个slot?
 			if (this.state != DEPLOYING) {
 				slot.releaseSlot();
 				return;
@@ -516,8 +540,10 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 
 			final TaskManagerGateway taskManagerGateway = slot.getTaskManagerGateway();
 
+			//这里就是将task提交到{@code TaskManager}的地方
 			final CompletableFuture<Acknowledge> submitResultFuture = taskManagerGateway.submitTask(deployment, timeout);
 
+			//根据提交结果进行处理,如果提交失败,则进行fail处理
 			submitResultFuture.whenCompleteAsync(
 				(ack, failure) -> {
 					// only respond to the failure case

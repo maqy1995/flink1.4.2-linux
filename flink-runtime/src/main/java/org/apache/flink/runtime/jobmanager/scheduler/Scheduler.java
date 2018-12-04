@@ -178,7 +178,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 			
 			SlotSharingGroup sharingUnit = task.getSlotSharingGroup();
 			
-			if (sharingUnit != null) {
+			if (sharingUnit != null) { //如果有slotSharingGroup的话
 
 				// 1)  === If the task has a slot sharing group, schedule with shared slots ===
 				

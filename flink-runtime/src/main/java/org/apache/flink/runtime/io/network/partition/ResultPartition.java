@@ -113,7 +113,7 @@ public class ResultPartition implements BufferPoolOwner {
 
 	private BufferPool bufferPool;
 
-	private boolean hasNotifiedPipelinedConsumers;
+	private boolean hasNotifiedPipelinedConsumers; //用来表示当前是否已通知过消费者
 
 	private boolean isFinished;
 
@@ -271,23 +271,31 @@ public class ResultPartition implements BufferPoolOwner {
 		boolean success = false;
 
 		try {
+			//确认生产状态处于未完成状态
 			checkInProduceState();
 
+			//获取指定索引的子分区,subpartitionIndex 即targetChannel，可能通过ChannelSelector指定。RecordWriter包含ChannelSelector的实例
 			final ResultSubpartition subpartition = subpartitions[subpartitionIndex];
 
 			// retain for buffer use after add() but also to have a simple path for recycle()
 			buffer.retain();
 			synchronized (subpartition) {
+				//如果Buffer被加入子分区，则success被置为true
 				success = subpartition.add(buffer);
 
-				// Update statistics
+				// Update statistics  更新统计信息
 				totalNumberOfBuffers++;
 				totalNumberOfBytes += buffer.getSize();
 			}
 		} finally {
+			////如果Buffer被加入成功，且当前的模式是管道模式，则立即通知消费者任务
 			if (success) {
+				//在notifyPipelinedConsumers方法中，
+				//会通过分区可消费通知器（ResultPartitionConsumableNotifier）
+				//间接通知消费者任务（经过JobManager转发通知），它会携带两个信息：JobID和ResultPartitionID
 				notifyPipelinedConsumers();
 			}
+			//如果加入失败，则回收Buffer
 			buffer.recycle();
 		}
 	}
@@ -440,12 +448,15 @@ public class ResultPartition implements BufferPoolOwner {
 	 */
 	void onConsumedSubpartition(int subpartitionIndex) {
 
+		//已被释放，则直接返回
 		if (isReleased.get()) {
 			return;
 		}
 
+		//计数器减一后获得未完成的子分区计数
 		int refCnt = pendingReferences.decrementAndGet();
 
+		//如果全部都已完成，则通知ResultPartitionManager，它会将ResultPartition直接释放
 		if (refCnt == 0) {
 			partitionManager.onConsumedPartition(this);
 		}
@@ -474,7 +485,7 @@ public class ResultPartition implements BufferPoolOwner {
 		if (sendScheduleOrUpdateConsumersMessage && !hasNotifiedPipelinedConsumers && partitionType.isPipelined()) {
 			partitionConsumableNotifier.notifyPartitionConsumable(jobId, partitionId, taskActions);
 
-			hasNotifiedPipelinedConsumers = true;
+			hasNotifiedPipelinedConsumers = true; //将标志设置为已经通知过消费之
 		}
 	}
 }

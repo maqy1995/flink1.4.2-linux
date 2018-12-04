@@ -160,6 +160,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		this.priorExecutions = new EvictingBoundedList<>(maxPriorExecutionHistoryLength);
 
+		//Execution实例
 		this.currentExecution = new Execution(
 			getExecutionGraph().getFutureExecutor(),
 			this,
@@ -330,13 +331,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	public void connectSource(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber) {
 
+		//这里有连接策略
 		final DistributionPattern pattern = edge.getDistributionPattern();
 		final IntermediateResultPartition[] sourcePartitions = source.getPartitions();
 
 		ExecutionEdge[] edges;
 
 		switch (pattern) {
-			case POINTWISE:
+			case POINTWISE: //上游partition与下游consumers之间是一对多关系,即非shuffle操作
 				edges = connectPointwise(sourcePartitions, inputNumber);
 				break;
 
@@ -481,15 +483,23 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 *
 	 * @return The preferred locations based in input streams, or an empty iterable,
 	 *         if there is no input-based preference.
+	 *
+	 *         逻辑拆分如下:
+	 *
+	 * a、如果没有输入源,则返回空集合,对于数据源节点来说,就是返回空集合;
+	 * b、如果有输入源,则对每个输入源,都找出其所有分区所在的TaskManager的位置,
+	 * 如果某个输入源的分区所在位置超过MAX_DISTINCT_LOCATIONS_TO_CONSIDER(默认值为8),
+	 * 则不考虑这个输入源,直接跳过,然后将满足条件的输入源中,分区位置分布做少的那个数据源对应的TaskManager的位置集合,作为计算结果返回。
 	 */
 	public Collection<CompletableFuture<TaskManagerLocation>> getPreferredLocationsBasedOnInputs() {
 		// otherwise, base the preferred locations on the input connections
+		// 如果没有输入,则返回空集合,否则,基于输入连接确定偏好位置
 		if (inputEdges == null) {
 			return Collections.emptySet();
 		}
 		else {
-			Set<CompletableFuture<TaskManagerLocation>> locations = new HashSet<>(getTotalNumberOfParallelSubtasks());
-			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new HashSet<>(getTotalNumberOfParallelSubtasks());
+			Set<CompletableFuture<TaskManagerLocation>> locations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //现在的分布？
+			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //输入的分布
 
 			// go over all inputs
 			for (int i = 0; i < inputEdges.length; i++) {
@@ -497,12 +507,15 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				ExecutionEdge[] sources = inputEdges[i];
 				if (sources != null) {
 					// go over all input sources
+					// 遍历所有输入源
 					for (int k = 0; k < sources.length; k++) {
 						// look-up assigned slot of input source
+						//查询输入源的分配
 						CompletableFuture<TaskManagerLocation> locationFuture = sources[k].getSource().getProducer().getCurrentTaskManagerLocationFuture();
 						// add input location
 						inputLocations.add(locationFuture);
 						// inputs which have too many distinct sources are not considered
+						// 如果某个输入源有太多的节点分布,则不考虑这个输入源的节点位置
 						if (inputLocations.size() > MAX_DISTINCT_LOCATIONS_TO_CONSIDER) {
 							inputLocations.clear();
 							break;
@@ -510,6 +523,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 					}
 				}
 				// keep the locations of the input with the least preferred locations
+				// 保留具有最少分布位置的输入的位置
 				if (locations.isEmpty() || // nothing assigned yet
 						(!inputLocations.isEmpty() && inputLocations.size() < locations.size())) {
 					// current input has fewer preferred locations

@@ -181,6 +181,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 		this.serializedTaskInformation = null;
 
+		//ExecutionVertex数组
 		this.taskVertices = new ExecutionVertex[numTaskVertices];
 		this.operatorIDs = Collections.unmodifiableList(jobVertex.getOperatorIDs());
 		this.userDefinedOperatorIds = Collections.unmodifiableList(jobVertex.getUserDefinedOperatorIDs());
@@ -197,6 +198,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 		
 		// create the intermediate results
+		// 将IntermediateDataSets转化为IntermediateResult
 		this.producedDataSets = new IntermediateResult[jobVertex.getNumberOfProducedIntermediateDataSets()];
 
 		for (int i = 0; i < jobVertex.getProducedDataSets().size(); i++) {
@@ -216,6 +218,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 		// create all task vertices
 		for (int i = 0; i < numTaskVertices; i++) {
+			//ExecutionVertex的构造函数中,会构造出一个Execution实例。
 			ExecutionVertex vertex = new ExecutionVertex(
 					this,
 					i,
@@ -235,7 +238,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			}
 		}
 
-		// set up the input splits, if the vertex has any
+		// set up the input splits, if the vertex has any 似乎这里将source根据并行度进行了切分？
 		try {
 			@SuppressWarnings("unchecked")
 			InputSplitSource<InputSplit> splitSource = (InputSplitSource<InputSplit>) jobVertex.getInputSplitSource();
@@ -415,7 +418,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	
 	public void connectToPredecessors(Map<IntermediateDataSetID, IntermediateResult> intermediateDataSets) throws JobException {
 		
-		List<JobEdge> inputs = jobVertex.getInputs();
+		List<JobEdge> inputs = jobVertex.getInputs();//如果是source，则inputs为空，不会进入下面的循环
 		
 		if (LOG.isDebugEnabled()) {
 			LOG.debug(String.format("Connecting ExecutionJobVertex %s (%s) to %d predecessors.", jobVertex.getID(), jobVertex.getName(), inputs.size()));
@@ -448,7 +451,8 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			
 			for (int i = 0; i < parallelism; i++) {
 				ExecutionVertex ev = taskVertices[i];
-				ev.connectSource(num, ires, edge, consumerIndex);
+				//这里指定了连接策略
+				ev.connectSource(num, ires, edge, consumerIndex);//num:第num条边，即第num个消费者,这里已经区分了每个并行度
 			}
 		}
 	}
@@ -487,6 +491,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	 * @param resourceProvider The resource provider from whom the slots are requested.
 	 * @param queued if the allocation can be queued
 	 * @param locationPreferenceConstraint constraint for the location preferences
+	 * 为ExecutionJobVertex中的每个Execution申请一个slot,然后具体的申请逻辑,是放在Execution中的,继续向下看
 	 */
 	public Collection<CompletableFuture<Execution>> allocateResourcesForAll(
 			SlotProvider resourceProvider,
@@ -497,6 +502,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 
 		// try to acquire a slot future for each execution.
 		// we store the execution with the future just to be on the safe side
+		// 为ExecutionJobVertex中的每个Execution尝试申请一个slot,并返回future
 		for (int i = 0; i < vertices.length; i++) {
 			// allocate the next slot (future)
 			final Execution exec = vertices[i].getCurrentExecutionAttempt();

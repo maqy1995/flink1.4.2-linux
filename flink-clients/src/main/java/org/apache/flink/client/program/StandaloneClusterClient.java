@@ -100,8 +100,12 @@ public class StandaloneClusterClient extends ClusterClient {
 	protected JobSubmissionResult submitJob(JobGraph jobGraph, ClassLoader classLoader)
 			throws ProgramInvocationException {
 		if (isDetached()) {
+			//maqy add
+			System.out.println("maqy add,StandaloneClusterClient line 104,接下来执行 runDetached(jobGraph,classLoader)方法");
 			return super.runDetached(jobGraph, classLoader);
 		} else {
+			//maqy add
+			System.out.println("maqy add,StandaloneClusterClient line 108,接下来执行 run(jobGraph,classLoader)方法");
 			return super.run(jobGraph, classLoader);
 		}
 	}

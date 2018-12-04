@@ -491,7 +491,7 @@ public abstract class ClusterClient {
 		final ActorSystem actorSystem;
 
 		try {
-			//根据配置信息中是否是高可用模式，创建LeaderRetrievalService对象
+			//根据配置信息中是否是高可用模式，创建LeaderRetrievalService对象,获取JobManager的地址给JobClientActor
 			actorSystem = actorSystemLoader.get();
 		} catch (FlinkException fe) {
 			throw new ProgramInvocationException("Could not start the ActorSystem needed to talk to the " +

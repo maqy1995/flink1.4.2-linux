@@ -242,6 +242,16 @@ public class NetworkBufferPool implements BufferPoolFactory {
 	// BufferPoolFactory
 	// ------------------------------------------------------------------------
 
+	/**
+	 * 创建 LocalBufferPool：
+	 * 1.做一些状态备份，包括整体使用的 Buffer 数、可动态调整大小的 BufferPool 等
+	 * 2.对于可动态调整的 BufferPool，重新调整可用内存，调整方式为 round-robin
+	 * @param numRequiredBuffers
+	 * 		minimum number of network buffers in this pool
+	 * @param maxUsedBuffers
+	 * @return
+	 * @throws IOException
+	 */
 	@Override
 	public BufferPool createBufferPool(int numRequiredBuffers, int maxUsedBuffers) throws IOException {
 		// It is necessary to use a separate lock from the one used for buffer
@@ -282,6 +292,12 @@ public class NetworkBufferPool implements BufferPoolFactory {
 		}
 	}
 
+	/**
+	 * 销毁LocalBufferPool:
+	 * 1.消除状态记录
+	 * 2.对于可动态调整的 BufferPool，重新调整可用内存，调整方式为 round-robin
+	 * @param bufferPool
+	 */
 	@Override
 	public void destroyBufferPool(BufferPool bufferPool) {
 		if (!(bufferPool instanceof LocalBufferPool)) {

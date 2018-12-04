@@ -491,6 +491,7 @@ public class SingleInputGate implements InputGate {
 
 	@Override
 	public BufferOrEvent getNextBufferOrEvent() throws IOException, InterruptedException {
+		//如果已接收到所有EndOfPartitionEvent事件，则说明每个ResultSubpartition中的数据都被消费完成
 		if (hasReceivedAllEndOfPartitionEvents) {
 			return null;
 		}
@@ -499,11 +500,13 @@ public class SingleInputGate implements InputGate {
 			throw new IllegalStateException("Released");
 		}
 
+		//触发所有的输入通道向ResultSubpartition发起请求
 		requestPartitions();
 
 		InputChannel currentChannel;
 		boolean moreAvailable;
 
+		//阻塞并循环等待有可获取数据的通道可用
 		synchronized (inputChannelsWithData) {
 			while (inputChannelsWithData.size() == 0) {
 				if (isReleased) {
@@ -513,10 +516,12 @@ public class SingleInputGate implements InputGate {
 				inputChannelsWithData.wait();
 			}
 
+			//从阻塞队列中请求（并删除）队首的输入通道
 			currentChannel = inputChannelsWithData.remove();
 			moreAvailable = inputChannelsWithData.size() > 0;
 		}
 
+		//从输入通道中获得下一个Buffer
 		final BufferAndAvailability result = currentChannel.getNextBuffer();
 
 		// Sanity check that notifications only happen when data is available
@@ -533,24 +538,31 @@ public class SingleInputGate implements InputGate {
 		}
 
 		final Buffer buffer = result.buffer();
+		//如果该Buffer是用户数据，则构建BufferOrEvent对象并返回
 		if (buffer.isBuffer()) {
 			return new BufferOrEvent(buffer, currentChannel.getChannelIndex(), moreAvailable);
 		}
 		else {
+			//否则把它当作事件来处理
 			final AbstractEvent event = EventSerializer.fromBuffer(buffer, getClass().getClassLoader());
 
+			//如果获取到的是标识某ResultSubpartition已经生产完数据的事件
 			if (event.getClass() == EndOfPartitionEvent.class) {
+				//对获取该ResultSubpartition的通道进行标记
 				channelsWithEndOfPartitionEvents.set(currentChannel.getChannelIndex());
 
+				//如果所有信道都被标记了，则全部通道获取数据完成
 				if (channelsWithEndOfPartitionEvents.cardinality() == numberOfInputChannels) {
 					hasReceivedAllEndOfPartitionEvents = true;
 				}
 
+				//对外发出ResultSubpartition已被消费的通知同时释放资源
 				currentChannel.notifySubpartitionConsumed();
 
 				currentChannel.releaseAllResources();
 			}
 
+			//以事件来构建BufferOrEvent对象
 			return new BufferOrEvent(event, currentChannel.getChannelIndex(), moreAvailable);
 		}
 	}

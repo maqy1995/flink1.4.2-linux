@@ -60,7 +60,7 @@ public class NetworkEnvironment {
 
 	private final ConnectionManager connectionManager;
 
-	private final ResultPartitionManager resultPartitionManager;
+	private final ResultPartitionManager resultPartitionManager;//对ResultPartition进行管理的部件是结果分区管理器（ResultPartitionManager）。一个NetworkEnvironment对应一个ResultPartitionManager
 
 	private final TaskEventDispatcher taskEventDispatcher;
 

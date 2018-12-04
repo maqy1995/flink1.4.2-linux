@@ -131,6 +131,8 @@ public class ExecutionGraphBuilder {
 
 		// set the basic properties
 
+		//如果是流处理，默认是EAGER,即所有节点同时部署,批处理则是LAZY_FROM_SOURCES
+		//原因可能是，流处理(make sure that all vertices start immediately.
 		executionGraph.setScheduleMode(jobGraph.getScheduleMode());
 		executionGraph.setQueuedSchedulingAllowed(jobGraph.getAllowQueuedScheduling());
 
@@ -173,11 +175,13 @@ public class ExecutionGraphBuilder {
 				(System.nanoTime() - initMasterStart) / 1_000_000);
 
 		// topologically sort the job vertices and attach the graph to the existing one
+		// 得到排过序的JobVertex集合
 		List<JobVertex> sortedTopology = jobGraph.getVerticesSortedTopologicallyFromSources();
 		if (log.isDebugEnabled()) {
 			log.debug("Adding {} vertices from job graph {} ({}).", sortedTopology.size(), jobName, jobId);
 		}
-		executionGraph.attachJobGraph(sortedTopology);
+		//创建executionGraph  在获取了排序后的拓扑的JobVertex集合后,就可以开始将其转换成ExecutionGraph中的ExecutionJobVertex。
+		executionGraph.attachJobGraph(sortedTopology);   //通过这里将executionGraph真正的创建完成
 
 		if (log.isDebugEnabled()) {
 			log.debug("Successfully created execution graph from job graph {} ({}).", jobName, jobId);

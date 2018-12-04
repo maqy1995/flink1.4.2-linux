@@ -37,11 +37,8 @@ import org.apache.flink.client.cli.ProgramOptions;
 import org.apache.flink.client.cli.RunOptions;
 import org.apache.flink.client.cli.SavepointOptions;
 import org.apache.flink.client.cli.StopOptions;
-import org.apache.flink.client.program.ClusterClient;
-import org.apache.flink.client.program.PackagedProgram;
-import org.apache.flink.client.program.ProgramInvocationException;
-import org.apache.flink.client.program.ProgramMissingJobException;
-import org.apache.flink.client.program.ProgramParametrizationException;
+import org.apache.flink.client.program.*;
+import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
@@ -273,6 +270,13 @@ public class CliFrontend {
 			client = createClient(options, program);
 			client.setPrintStatusDuringExecution(options.getStdoutLogging());
 			client.setDetached(options.getDetachedMode());
+			//maqy add
+			if(client instanceof StandaloneClusterClient){
+				System.out.println("maqy add CliFrontend line 274,client is StandaloneClusterClient");
+			}else if(client instanceof RestClusterClient){
+				System.out.println("maqy add CliFrontend line 277,client is RestClusterClient");
+			}
+
 			LOG.debug("Client slots is set to {}", client.getMaxSlots());
 
 			LOG.debug(options.getSavepointRestoreSettings().toString());
@@ -813,7 +817,7 @@ public class CliFrontend {
 		JobSubmissionResult result;
 		try {
 			//执行ClusterClient中的run方法
-			System.out.println("maqy executeProgram中  执行了 ClusterClient的 run()方法");
+			System.out.println("maqy add ,CliFrontend line 820,executeProgram()中  执行了 ClusterClient的 run()方法");
 			result = client.run(program, parallelism);
 		} catch (ProgramParametrizationException e) {
 			return handleParametrizationException(e);
@@ -940,6 +944,8 @@ public class CliFrontend {
 			try {
 				String applicationName = "Flink Application: " + program.getMainClassName();
 				//如果没有检索到，尝试创建一个集群
+				System.out.println("maqy add CliFrontend line 947 没有检索到集群，尝试创建一个集群");
+
 				client = activeCommandLine.createCluster(
 					applicationName,
 					options.getCommandLine(),
