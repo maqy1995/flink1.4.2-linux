@@ -440,7 +440,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 		}
 
 		// this method only works if the execution is in the state 'CREATED'
-		//只有状态是 'CREATED' 时, 这个方法才能正常工作
+		// 只有状态是 'CREATED' 时, 这个方法才能正常工作
 		if (transitionState(CREATED, SCHEDULED)) {
 
 			//ScheduleUnit 实例就是在这里构造出来的

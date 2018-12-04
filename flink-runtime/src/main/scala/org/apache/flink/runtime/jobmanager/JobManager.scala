@@ -123,10 +123,16 @@ class JobManager(
     protected val flinkConfiguration: Configuration,
     protected val futureExecutor: ScheduledExecutorService,
     protected val ioExecutor: Executor,
-    protected val instanceManager: InstanceManager,//TaskManager在flink框架内部被叫做Instance，flink通过InstanceManager管理 flink 集群中当前所有活跃的 TaskManager，包括接收心跳，通知 InstanceListener Instance 的生成与死亡，一个典型的 InstanceListener 为 flink 的 Scheduler
+    // TaskManager在flink框架内部被叫做Instance，
+    // flink通过InstanceManager管理 flink 集群中当前所有活跃的 TaskManager，
+    // 包括接收心跳，通知 InstanceListener Instance 的生成与死亡，
+    // 一个典型的 InstanceListener 为 flink 的 Scheduler
+    protected val instanceManager: InstanceManager,
     protected val scheduler: FlinkScheduler,
-    protected val blobServer: BlobServer,//实现了 BOLB server，其会监听收到的 requests，并会创建 目录结构存储 BLOBS 【持久化】或者临时性的缓存他们
-    protected val libraryCacheManager: BlobLibraryCacheManager,//flink job 的 jar 包存储服务，使用上面的 BlobServer 完成
+    //实现了 BOLB server，其会监听收到的 requests，并会创建 目录结构存储 BLOBS 【持久化】或者临时性的缓存他们
+    protected val blobServer: BlobServer,
+    //flink job 的 jar 包存储服务，使用上面的 BlobServer 完成
+    protected val libraryCacheManager: BlobLibraryCacheManager,
     protected val archive: ActorRef,
     protected val restartStrategyFactory: RestartStrategyFactory,
     protected val timeout: FiniteDuration,
@@ -348,8 +354,8 @@ class JobManager(
     // 同时使用 watch 监听 task manager 的存活
     case msg @ RegisterTaskManager(
           resourceId,
-          connectionInfo,
-          hardwareInformation,
+          connectionInfo, //ip地址，端口等信息
+          hardwareInformation, //这里主要是内存信息
           numberOfSlots) =>
       // we are being informed by the ResourceManager that a new task manager is available
       log.debug(s"RegisterTaskManager: $msg")
@@ -1751,8 +1757,8 @@ class JobManager(
   }
 
   /**
-   * Removes the job and sends it to the MemoryArchivist.//MemoryArchivist备案已提交的flink作业，包括JobGraph、ExecutionGraph等
-   *
+   * Removes the job and sends it to the MemoryArchivist.
+   * //MemoryArchivist备案已提交的flink作业，包括JobGraph、ExecutionGraph等
    * This should be called asynchronously. Removing the job from the [[SubmittedJobGraphStore]]
    * might block. Therefore be careful not to block the actor thread.
    *

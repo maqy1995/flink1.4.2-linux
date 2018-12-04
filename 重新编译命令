@@ -1,1 +1,4 @@
 mvn clean package -DskipTests
+
+
+ mvn install -DskipTests -Drat.skip=true
