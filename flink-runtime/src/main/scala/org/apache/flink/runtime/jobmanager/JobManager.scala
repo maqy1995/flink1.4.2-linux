@@ -123,10 +123,10 @@ class JobManager(
     protected val flinkConfiguration: Configuration,
     protected val futureExecutor: ScheduledExecutorService,
     protected val ioExecutor: Executor,
-    protected val instanceManager: InstanceManager,
+    protected val instanceManager: InstanceManager,//TaskManager在flink框架内部被叫做Instance，flink通过InstanceManager管理 flink 集群中当前所有活跃的 TaskManager，包括接收心跳，通知 InstanceListener Instance 的生成与死亡，一个典型的 InstanceListener 为 flink 的 Scheduler
     protected val scheduler: FlinkScheduler,
-    protected val blobServer: BlobServer,
-    protected val libraryCacheManager: BlobLibraryCacheManager,
+    protected val blobServer: BlobServer,//实现了 BOLB server，其会监听收到的 requests，并会创建 目录结构存储 BLOBS 【持久化】或者临时性的缓存他们
+    protected val libraryCacheManager: BlobLibraryCacheManager,//flink job 的 jar 包存储服务，使用上面的 BlobServer 完成
     protected val archive: ActorRef,
     protected val restartStrategyFactory: RestartStrategyFactory,
     protected val timeout: FiniteDuration,
@@ -141,7 +141,6 @@ class JobManager(
   with LogMessages // mixin order is important, we want first logging
   with LeaderContender
   with SubmittedJobGraphListener {
-
   override val log = Logger(getClass)
 
   /** Either running or not yet archived jobs (session hasn't been ended). */
@@ -254,6 +253,7 @@ class JobManager(
    */
   override def handleMessage: Receive = {
 
+    //GrantLeadership 获得leader授权，将自身被分发到的 session id 写到 zookeeper，并恢复所有的 jobs.
     case GrantLeadership(newLeaderSessionID) =>
       log.info(s"JobManager $getAddress was granted leadership with leader session ID " +
         s"$newLeaderSessionID.")
@@ -277,6 +277,7 @@ class JobManager(
         }
       }(context.dispatcher)
 
+    //RevokeLeadership 剥夺leader授权，打断清空所有的 job 信息，但是保留作业缓存，注销所有的 TaskManagers.
     case RevokeLeadership =>
       log.info(s"JobManager ${self.path.toSerializationFormat} was revoked leadership.")
 
@@ -342,6 +343,9 @@ class JobManager(
         // TriggerRegistrationAtJobManager messages to the old ResourceManager
       }
 
+    //RegisterTaskManagers: 注册 TaskManager，如果之前已经注册过，则只给对应的 Instance 发送消息，否则启动注册逻辑：
+    //在 InstanceManager 中注册该 Instance 的信息，并停止 InstanceBlobLibraryCacheManager 的端口【供下载 lib 包用】，
+    // 同时使用 watch 监听 task manager 的存活
     case msg @ RegisterTaskManager(
           resourceId,
           connectionInfo,
@@ -809,6 +813,7 @@ class JobManager(
           log.info(s"Disposing savepoint at '$savepointPath'.")
           //TODO user code class loader ?
           // (has not been used so far and new savepoints can simply be deleted by file)
+          //SavepointStore:flink 的状态存储，负责存储算子内部定义的状态，与 checkpoint 稍有区别，后者由 flink 框架来维护
           val savepoint = SavepointStore.loadSavepoint(
             savepointPath,
             Thread.currentThread().getContextClassLoader)
@@ -1228,6 +1233,7 @@ class JobManager(
         // Important: We need to make sure that the library registration is the first action,
         // because this makes sure that the uploaded jar files are removed in case of
         // unsuccessful
+        //将job所需jar相关信息注册到library管理器中,如果注册失败,则抛出异常
         try {
           libraryCacheManager.registerJob(
             jobGraph.getJobID, jobGraph.getUserJarBlobKeys, jobGraph.getClasspaths)
@@ -1238,16 +1244,19 @@ class JobManager(
               "Cannot set up the user code libraries: " + t.getMessage, t)
         }
 
+        //获取用户类加载器,如果获取的类加载器为null,则抛出异常
         val userCodeLoader = libraryCacheManager.getClassLoader(jobGraph.getJobID)
         if (userCodeLoader == null) {
           throw new JobSubmissionException(jobId,
             "The user code class loader could not be initialized.")
         }
 
+        //判断{@code JobGraph}中的{@code StreamNode}的个数, 如果为0, 则说明是个空任务,抛出异常
         if (jobGraph.getNumberOfVertices == 0) {
           throw new JobSubmissionException(jobId, "The given job is empty")
         }
 
+        //优先采用JobGraph配置的重启策略,如果没有配置,则采用JobManager中配置的重启策略
         val restartStrategy =
           Option(jobGraph.getSerializedExecutionConfig()
             .deserializeValue(userCodeLoader)
@@ -1262,9 +1271,11 @@ class JobManager(
 
         val jobMetrics = jobManagerMetricGroup.addJob(jobGraph)
 
+        //获取注册在调度器上的所有TaskManager实例的总的slot数量
         val numSlots = scheduler.getTotalNumberOfSlots()
 
         // see if there already exists an ExecutionGraph for the corresponding job ID
+        //针对jobID,看是否已经存在 ExecutionGraph,如果有,则直接获取已有的,并将registerNewGraph标识为false
         val registerNewGraph = currentJobs.get(jobGraph.getJobID) match {
           case Some((graph, currentJobInfo)) =>
             executionGraph = graph
@@ -1274,8 +1285,14 @@ class JobManager(
             true
         }
 
-        print("maqy JobManager  创建ExecutionGraph")
-
+        //通过{@link JobGraph}构建出{@link ExecutionGraph}
+        /**
+          * ExecutionGraph是JobGraph的并行模式,是基于JobGraph构建出来的,主要构建逻辑都在ExecutionGraphBuilder这个类中,
+          * 而且该方法的构造函数是private的,且该类只有两个static方法,buildGraph()和idToVertex(),
+          * 而ExecutionGraph的构造逻辑都在buildGraph()方法中。
+          * 在buildGraph()方法中,先是对executionGraph进行一些基础的设置,如果有需要,则对各个JobVertex进行初始化操作,
+          * 然后就是将JobVertex转化成ExecutionGraph中的组件,转化成功后,则开始设置checkpoint相关的配置。
+          */
         executionGraph = ExecutionGraphBuilder.buildGraph(
           executionGraph,
           jobGraph,
@@ -1291,15 +1308,18 @@ class JobManager(
           numSlots,
           blobServer,
           log.logger)
-        
+
+        // 如果还没有注册过, 则进行注册
         if (registerNewGraph) {
           currentJobs.put(jobGraph.getJobID, (executionGraph, jobInfo))
         }
 
         // get notified about job status changes
+        // 注册job状态变化监听器
         executionGraph.registerJobStatusListener(
           new StatusListenerMessenger(self, leaderSessionID.orNull))
 
+        //如果客户端关心执行结果和状态变化,则为客户端在executiongraph中注册相应的监听器
         jobInfo.clients foreach {
           // the sender wants to be notified about state changes
           case (client, ListeningBehaviour.EXECUTION_RESULT_AND_STATE_CHANGES) =>
@@ -1310,32 +1330,41 @@ class JobManager(
         }
 
       } catch {
+        //如果异常, 则进行回收操作
         case t: Throwable =>
           log.error(s"Failed to submit job $jobId ($jobName)", t)
 
+          //进行jar包的注册回滚
           libraryCacheManager.unregisterJob(jobId)
           blobServer.cleanupJob(jobId)
-          currentJobs.remove(jobId)
+          currentJobs.remove(jobId) //移除上面注册的graph
 
+          //如果executionGraph不为null,还需要执行failGlobal操作
           if (executionGraph != null) {
             executionGraph.failGlobal(t)
           }
 
+          //构建JobExecutionException移除
           val rt: Throwable = if (t.isInstanceOf[JobExecutionException]) {
             t
           } else {
             new JobExecutionException(jobId, s"Failed to submit job $jobId ($jobName)", t)
           }
 
+          // 通知客户端,job失败了
           jobInfo.notifyClients(
             decorateMessage(JobResultFailure(new SerializedThrowable(rt))))
           return
+          //可见catch中,主要进行一些回滚操作,这样可以确保在出现异常的情况下,可以让已经上传的jar等被删除掉。
       }
 
       // execute the recovery/writing the jobGraph into the SubmittedJobGraphStore asynchronously
       // because it is a blocking operation
+      //在前面的准备工作都完成,ExecutionGraph也构建好之后,接下来就可以对ExecutionGraph进行调度执行。
+      // 这部分的操作是比较耗时的,所以整个被包在一个futrue中进行异步执行
       future {
         try {
+          //如果isRecovery为true,则先进行恢复操作;
           if (isRecovery) {
             // this is a recovery of a master failure (this master takes over)
             executionGraph.restoreLatestCheckpointedState(false, false)
@@ -1343,6 +1372,7 @@ class JobManager(
           else {
             // load a savepoint only if this is not starting from a newer checkpoint
             // as part of an master failure recovery
+            // 如果isRecovery为false,则进行checkpoint设置,并将jobGraph的相关信息进备份操作
             val savepointSettings = jobGraph.getSavepointRestoreSettings
             if (savepointSettings.restoreSavepoint()) {
               try {
@@ -1375,9 +1405,12 @@ class JobManager(
             }
           }
 
+          //通知客户端,job已经提交成功了
           jobInfo.notifyClients(
             decorateMessage(JobSubmitSuccess(jobGraph.getJobID)))
 
+          //接下来就是判断当前JobManager是否是leader,如果是,则开始对executionGraph进行调度执行,
+          // 如果不是leader,则告诉JobManager自身,去进行remove操作,逻辑如下
           if (leaderElectionService.hasLeadership) {
             // There is a small chance that multiple job managers schedule the same job after if
             // they try to recover at the same time. This will eventually be noticed, but can not be
@@ -1388,10 +1421,12 @@ class JobManager(
             // the job.
             log.info(s"Scheduling job $jobId ($jobName).")
 
+            //对ExecutionGraph进行调度
             executionGraph.scheduleForExecution()
           } else {
             // Remove the job graph. Otherwise it will be lingering around and possibly removed from
             // ZooKeeper by this JM.
+            //移除这个job
             self ! decorateMessage(RemoveJob(jobId, removeJobFromStateBackend = false))
 
             log.warn(s"Submitted job $jobId, but not leader. The other leader needs to recover " +
@@ -1716,7 +1751,7 @@ class JobManager(
   }
 
   /**
-   * Removes the job and sends it to the MemoryArchivist.
+   * Removes the job and sends it to the MemoryArchivist.//MemoryArchivist备案已提交的flink作业，包括JobGraph、ExecutionGraph等
    *
    * This should be called asynchronously. Removing the job from the [[SubmittedJobGraphStore]]
    * might block. Therefore be careful not to block the actor thread.
@@ -1990,6 +2025,7 @@ object JobManager {
       listeningPort: Int)
     : Unit = {
 
+    //得到处理器的核心数目
     val numberProcessors = Hardware.getNumberCPUCores()
 
     val futureExecutor = Executors.newScheduledThreadPool(
@@ -2092,6 +2128,7 @@ object JobManager {
       listeningPortRange: java.util.Iterator[Integer])
     : Unit = {
 
+    //得到端口之类的信息？？？
     val result = AkkaUtils.retryOnBindException({
       // Try all ports in the range until successful
       val socket = NetUtils.createSocketFromPorts(
