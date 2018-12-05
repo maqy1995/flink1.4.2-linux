@@ -427,7 +427,6 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			LocationPreferenceConstraint locationPreferenceConstraint) throws IllegalExecutionStateException {
 
 		checkNotNull(slotProvider);
-
 		//获取在构建JobVertex时已经赋值好的SlotSharingGroup实例和CoLocationConstraint实例,如果有的话
 		final SlotSharingGroup sharingGroup = vertex.getJobVertex().getSlotSharingGroup();
 		final CoLocationConstraint locationConstraint = vertex.getLocationConstraint();
