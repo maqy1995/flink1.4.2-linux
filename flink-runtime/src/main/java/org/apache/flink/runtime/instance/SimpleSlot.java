@@ -87,8 +87,8 @@ public class SimpleSlot extends Slot {
 			TaskManagerGateway taskManagerGateway,
 			@Nullable SharedSlot parent, @Nullable AbstractID groupID) {
 
-		super(parent != null ?
-				parent.getAllocatedSlot() :
+		super(parent != null ? //如果有parent，即属于某个sharedSlot
+				parent.getAllocatedSlot() : //使用parent的allocatedSlot
 				new AllocatedSlot(NO_ALLOCATION_ID, jobID, location, slotNumber,
 						ResourceProfile.UNKNOWN, taskManagerGateway),
 				owner, slotNumber, parent, groupID);

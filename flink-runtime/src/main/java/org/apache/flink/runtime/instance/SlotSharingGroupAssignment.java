@@ -176,19 +176,19 @@ public class SlotSharingGroupAssignment {
 			}
 			
 			// add to the total bookkeeping
-			if (!allSlots.add(sharedSlot)) {
+			if (!allSlots.add(sharedSlot)) {//加到allSlots中
 				throw new IllegalArgumentException("Slot was already contained in the assignment group");
 			}
 			
 			SimpleSlot subSlot;
 			AbstractID groupIdForMap;
 					
-			if (constraint == null) {
+			if (constraint == null) {//简单的allocate一个simpleSlot
 				// allocate us a sub slot to return
 				subSlot = sharedSlot.allocateSubSlot(groupId);
 				groupIdForMap = groupId;
 			}
-			else {
+			else {//如果有CoLocationConstraint
 				// sanity check
 				if (constraint.isAssignedAndAlive()) {
 					throw new IllegalStateException(
@@ -241,11 +241,11 @@ public class SlotSharingGroupAssignment {
 					}
 
 					Map<ResourceID, List<SharedSlot>> available = entry.getValue();
-					putIntoMultiMap(available, location, sharedSlot);
+					putIntoMultiMap(available, location, sharedSlot);//对于其他的jobVertex，把sharedSlot加上去
 				}
 
 				// make sure an empty entry exists for this group, if no other entry exists
-				if (!entryForNewJidExists) {
+				if (!entryForNewJidExists) {//如果存在参数中的groupId，那么就把它的slot信息清空
 					availableSlotsPerJid.put(groupIdForMap, new LinkedHashMap<ResourceID, List<SharedSlot>>());
 				}
 
@@ -272,7 +272,7 @@ public class SlotSharingGroupAssignment {
 	 * @return A slot to execute the given ExecutionVertex in, or null, if none is available.
 	 */
 	public SimpleSlot getSlotForTask(JobVertexID vertexID, Iterable<TaskManagerLocation> locationPreferences) {
-		synchronized (lock) {
+		synchronized (lock) {//获取sharedSlot，第三个参数意思是 是否一定要local
 			Tuple2<SharedSlot, Locality> p = getSlotForTaskInternal(vertexID, locationPreferences, false);
 
 			if (p != null) {
@@ -386,7 +386,7 @@ public class SlotSharingGroupAssignment {
 			AbstractID groupId, Iterable<TaskManagerLocation> preferredLocations, boolean localOnly)
 	{
 		// check if there is anything at all in this group assignment
-		if (allSlots.isEmpty()) {
+		if (allSlots.isEmpty()) { //如果没有slots，返回
 			return null;
 		}
 
@@ -398,11 +398,11 @@ public class SlotSharingGroupAssignment {
 			slotsForGroup = new LinkedHashMap<>();
 			availableSlotsPerJid.put(groupId, slotsForGroup);
 
-			for (SharedSlot availableSlot : allSlots) {
+			for (SharedSlot availableSlot : allSlots) {//因为allSlots是共享的，所以都可以加到slotsForGroup作为可用slots
 				putIntoMultiMap(slotsForGroup, availableSlot.getTaskManagerID(), availableSlot);
 			}
 		}
-		else if (slotsForGroup.isEmpty()) {
+		else if (slotsForGroup.isEmpty()) {//如果slotsForGroup存在，但是没有可用slots
 			// the group exists, but nothing is available for that group
 			return null;
 		}
@@ -410,16 +410,16 @@ public class SlotSharingGroupAssignment {
 		// check whether we can schedule the task to a preferred location
 		boolean didNotGetPreferred = false;
 
-		if (preferredLocations != null) {
+		if (preferredLocations != null) {//如果有perferred location
 			for (TaskManagerLocation location : preferredLocations) {
 
 				// set the flag that we failed a preferred location. If one will be found,
 				// we return early anyways and skip the flag evaluation
 				didNotGetPreferred = true;
-
+ 				//在一个slotfForGroup中得到slot后，为何要remove，因为一个jobvertex不可能有两个task跑在同一个slot上
 				SharedSlot slot = removeFromMultiMap(slotsForGroup, location.getResourceID());
 				if (slot != null && slot.isAlive()) {
-					return new Tuple2<>(slot, Locality.LOCAL);
+					return new Tuple2<>(slot, Locality.LOCAL);//返回，并且满足prefer，因此是LOCAL
 				}
 			}
 		}
@@ -428,12 +428,12 @@ public class SlotSharingGroupAssignment {
 		if (didNotGetPreferred && localOnly) {
 			return null;
 		}
-
+		//走到这里，并didNotGetPreferred = false，说明preferredLocations = null，即UNCONSTRAINED，没有约束条件
 		Locality locality = didNotGetPreferred ? Locality.NON_LOCAL : Locality.UNCONSTRAINED;
 
 		// schedule the task to any available location
 		SharedSlot slot;
-		while ((slot = pollFromMultiMap(slotsForGroup)) != null) {
+		while ((slot = pollFromMultiMap(slotsForGroup)) != null) {//在不指定TM location的情况下，随意找一个slot
 			if (slot.isAlive()) {
 				return new Tuple2<>(slot, locality);
 			}

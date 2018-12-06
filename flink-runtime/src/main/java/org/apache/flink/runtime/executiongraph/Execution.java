@@ -448,7 +448,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 					new ScheduledUnit(this, sharingGroup, locationConstraint);
 
 			// calculate the preferred locations
-			//获取当前任务分配槽位所在节点的"偏好位置集合",也就是分配时,优先考虑分配在这些节点上
+			// 获取当前任务分配槽位所在节点的"偏好位置集合",也就是分配时,优先考虑分配在这些节点上
 			final CompletableFuture<Collection<TaskManagerLocation>> preferredLocationsFuture = calculatePreferredLocations(locationPreferenceConstraint);
 
 			return preferredLocationsFuture

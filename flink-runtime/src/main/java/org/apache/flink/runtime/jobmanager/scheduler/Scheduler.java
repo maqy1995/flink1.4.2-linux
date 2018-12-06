@@ -401,6 +401,8 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 	 * @param localOnly Flag to indicate if non-local choices are acceptable.
 	 * 
 	 * @return A sub-slot for the given vertex, or {@code null}, if no slot is available.
+	 *
+	 * getNewSlotForSharingGroup是在当SlotSharingGroup没有可用的slot时，会被调用从instance中分配SharedSlot
 	 */
 	protected SimpleSlot getNewSlotForSharingGroup(ExecutionVertex vertex,
 													Iterable<TaskManagerLocation> requestedLocations,
@@ -410,10 +412,10 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 	{
 		// we need potentially to loop multiple times, because there may be false positives
 		// in the set-with-available-instances
-		while (true) {
+		while (true) {//根据locations信息找到local的instance
 			Pair<Instance, Locality> instanceLocalityPair = findInstance(requestedLocations, localOnly);
 			
-			if (instanceLocalityPair == null) {
+			if (instanceLocalityPair == null) { //如果没有可用的instance，返回null
 				// nothing is available
 				return null;
 			}
@@ -424,11 +426,11 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 			try {
 				JobVertexID groupID = vertex.getJobvertexId();
 				
-				// allocate a shared slot from the instance
+				// allocate a shared slot from the instance 从instance申请一个SharedSlot
 				SharedSlot sharedSlot = instanceToUse.allocateSharedSlot(vertex.getJobId(), groupAssignment);
 
 				// if the instance has further available slots, re-add it to the set of available resources.
-				if (instanceToUse.hasResourcesAvailable()) {
+				if (instanceToUse.hasResourcesAvailable()) {//如果这个instance还有多余的资源，再加入instancesWithAvailableResources，下次还能继续用来分配
 					this.instancesWithAvailableResources.put(instanceToUse.getTaskManagerID(), instanceToUse);
 				}
 
