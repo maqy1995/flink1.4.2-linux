@@ -50,6 +50,7 @@ import org.apache.flink.runtime.executiongraph.failover.RestartAllStrategy;
 import org.apache.flink.runtime.executiongraph.restart.ExecutionGraphRestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartCallback;
 import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
+import org.apache.flink.runtime.instance.Instance;
 import org.apache.flink.runtime.instance.SlotProvider;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
@@ -62,10 +63,12 @@ import org.apache.flink.runtime.jobgraph.tasks.ExternalizedCheckpointSettings;
 import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
+import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.taskmanager.TaskExecutionState;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.types.Either;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -79,16 +82,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -279,6 +273,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** Checkpoint stats tracker separate from the coordinator in order to be
 	 * available after archiving. */
 	private CheckpointStatsTracker checkpointStatsTracker;
+
+	/** maqy add
+	 *  the source operator's prefer Location, is usually get through HDFS block information */
+	private Collection<TaskManagerLocation> preferedSourceLocation;
 
 	// ------ Fields that are only relevant for archived execution graphs ------------
 	private String jsonPlan;
@@ -880,6 +878,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	private void scheduleLazy(SlotProvider slotProvider) {
 		// simply take the vertices without inputs.
+
+		//maqy add
+		setPreferedSourceLocation();
+
 		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
 			if (ejv.getJobVertex().isInputVertex()) { //如果是源节点，则进行调度
 				ejv.scheduleAll(
@@ -1738,5 +1740,46 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			isStoppable(),
 			getCheckpointCoordinatorConfiguration(),
 			getCheckpointStatsSnapshot());
+	}
+
+	// --------------------------------------------------------------------------------------------
+	//  maqy add
+	// --------------------------------------------------------------------------------------------
+
+	/** maqy add
+	 * set preferedSourceLocation  Collection<TaskManagerLocation> preferedSourceLocation
+	 */
+	public void setPreferedSourceLocation(){
+		//先得到SlotProvider，即scheduler
+		SlotProvider slotProvider=this.getSlotProvider();
+		if(slotProvider instanceof Scheduler){
+			//初始化preferedSourceLocation
+			this.preferedSourceLocation = new HashSet<>();
+			//得到所有的instance
+			Map<String, List<Instance>> allInstancesByHost = ((Scheduler) slotProvider).getInstancesByHost();
+
+			//遍历Map<String, List<Instance>> allInstancesByHost,目前这里手动写slave1和slave2
+			for(Map.Entry<String, List<Instance>> entry : allInstancesByHost.entrySet()){
+				if(entry.getKey().equals("slave1") || entry.getKey().equals("slave2")){
+					//得到是"slave1"或者"slave2"的list集合
+					List<Instance> instances =entry.getValue();
+					for(Instance instance : instances){
+						//将满足条件的每个Instance的location加入到preferedSourceLocation
+						preferedSourceLocation.add(instance.getTaskManagerLocation());
+					}
+				}
+			}
+
+		}
+
+
+	}
+
+	/** maqy add
+	 * get preferedSourceLocation
+	 */
+
+	public Collection<TaskManagerLocation> getPreferedSourceLocation(){
+		return this.preferedSourceLocation;
 	}
 }
