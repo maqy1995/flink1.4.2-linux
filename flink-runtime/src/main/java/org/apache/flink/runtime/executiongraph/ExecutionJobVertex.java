@@ -482,6 +482,29 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	}
 
 	/**
+	 * maqy add
+	 * Schedules all execution vertices of the source vertex
+	 *
+	 * @param slotProvider to allocate the slots from
+	 * @param queued if the allocations can be queued
+	 * @param preferredSourceLocations the collection of source vertex preferred locations.
+	 * @param locationPreferenceConstraint constraint for the location preferences
+	 */
+	public void scheduleAllFirst(
+		SlotProvider slotProvider,
+		boolean queued,
+		Collection preferredSourceLocations,
+		LocationPreferenceConstraint locationPreferenceConstraint) {
+
+		final ExecutionVertex[] vertices = this.taskVertices;
+
+		// kick off the tasks
+		for (ExecutionVertex ev : vertices) {
+			ev.scheduleForExecutionFirst(slotProvider, queued, preferredSourceLocations, locationPreferenceConstraint);
+		}
+	}
+
+	/**
 	 * Acquires a slot for all the execution vertices of this ExecutionJobVertex. The method returns
 	 * pairs of the slots and execution attempts, to ease correlation between vertices and execution
 	 * attempts.

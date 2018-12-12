@@ -399,6 +399,62 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	}
 
 	/**
+	 * maqy add
+	 * NOTE: This method only throws exceptions if it is in an illegal state to be scheduled, or if the tasks needs
+	 *       to be scheduled immediately and no resource is available. If the task is accepted by the schedule, any
+	 *       error sets the vertex state to failed and triggers the recovery logic.
+	 *
+	 * @param slotProvider The slot provider to use to allocate slot for this execution attempt.
+	 * @param queued Flag to indicate whether the scheduler may queue this task if it cannot
+	 *               immediately deploy it.
+	 * @param locationPreferenceConstraint constraint for the location preferences
+	 *
+	 * @throws IllegalStateException Thrown, if the vertex is not in CREATED state, which is the only state that permits scheduling.
+	 */
+	public boolean scheduleForExecutionFirst(
+		SlotProvider slotProvider,
+		boolean queued,
+		Collection preferredSourceLocations,
+		LocationPreferenceConstraint locationPreferenceConstraint) {
+		try {
+			final CompletableFuture<Execution> allocationFuture = allocateAndAssignSlotForExecutionFirst(
+				slotProvider,
+				queued,
+				preferredSourceLocations,
+				locationPreferenceConstraint);
+
+			// IMPORTANT: We have to use the synchronous handle operation (direct executor) here so
+			// that we directly deploy the tasks if the slot allocation future is completed. This is
+			// necessary for immediate deployment.
+			final CompletableFuture<Void> deploymentFuture = allocationFuture.handle(
+				(Execution ignored, Throwable throwable) ->  {
+					if (throwable != null) {
+						markFailed(ExceptionUtils.stripCompletionException(throwable));
+					}
+					else {
+						try {
+							deploy();
+						} catch (Throwable t) {
+							markFailed(ExceptionUtils.stripCompletionException(t));
+						}
+					}
+					return null;
+				}
+			);
+
+			// if tasks have to scheduled immediately check that the task has been deployed
+			if (!queued && !deploymentFuture.isDone()) {
+				markFailed(new IllegalArgumentException("The slot allocation future has not been completed yet."));
+			}
+
+			return true;
+		}
+		catch (IllegalExecutionStateException e) {
+			return false;
+		}
+	}
+
+	/**
 	 * Allocates and assigns a slot obtained from the slot provider to the execution.
 	 *
 	 * @param slotProvider to obtain a new slot from
@@ -450,6 +506,73 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 			// calculate the preferred locations
 			// 获取当前任务分配槽位所在节点的"偏好位置集合",也就是分配时,优先考虑分配在这些节点上
 			final CompletableFuture<Collection<TaskManagerLocation>> preferredLocationsFuture = calculatePreferredLocations(locationPreferenceConstraint);
+
+			return preferredLocationsFuture
+				.thenCompose(
+					(Collection<TaskManagerLocation> preferredLocations) ->
+						slotProvider.allocateSlot( //在获取输入节点的位置之后,将其作为偏好位置集合,基于这些偏好位置,申请分配一个slot
+							toSchedule,
+							queued,
+							preferredLocations))
+				.thenApply(
+					(SimpleSlot slot) -> {
+						if (tryAssignResource(slot)) {
+							return this;  //如果slot分配成功,则返回这个future
+						} else {
+							// release the slot
+							// 释放slot
+							slot.releaseSlot();
+
+							throw new CompletionException(new FlinkException("Could not assign slot " + slot + " to execution " + this + " because it has already been assigned "));
+						}
+					});
+		}
+		else {
+			// call race, already deployed, or already done
+			throw new IllegalExecutionStateException(this, CREATED, state);
+		}
+	}
+
+	/**
+	 * maqy add
+	 * @param slotProvider
+	 * @param queued
+	 * @param preferredSourceLocations
+	 * @param locationPreferenceConstraint
+	 * @return
+	 * @throws IllegalExecutionStateException
+	 */
+	//刚把preferredSourceLocations加到参数中
+	public CompletableFuture<Execution> allocateAndAssignSlotForExecutionFirst(
+		SlotProvider slotProvider,
+		boolean queued,
+		Collection preferredSourceLocations,
+		LocationPreferenceConstraint locationPreferenceConstraint) throws IllegalExecutionStateException {
+
+		checkNotNull(slotProvider);
+		//获取在构建JobVertex时已经赋值好的SlotSharingGroup实例和CoLocationConstraint实例,如果有的话
+		final SlotSharingGroup sharingGroup = vertex.getJobVertex().getSlotSharingGroup();
+		final CoLocationConstraint locationConstraint = vertex.getLocationConstraint();
+
+		// sanity check
+		//位置约束不为null, 而共享组为null, 这种情况是不可能出现的, 出现了肯定就是异常了
+		if (locationConstraint != null && sharingGroup == null) {
+			throw new IllegalStateException(
+				"Trying to schedule with co-location constraint but without slot sharing allowed.");
+		}
+
+		// this method only works if the execution is in the state 'CREATED'
+		// 只有状态是 'CREATED' 时, 这个方法才能正常工作
+		if (transitionState(CREATED, SCHEDULED)) {
+
+			//ScheduleUnit 实例就是在这里构造出来的
+			ScheduledUnit toSchedule = locationConstraint == null ?
+				new ScheduledUnit(this, sharingGroup) :
+				new ScheduledUnit(this, sharingGroup, locationConstraint);
+
+			// calculate the preferred locations
+			// 获取当前任务分配槽位所在节点的"偏好位置集合",也就是分配时,优先考虑分配在这些节点上
+			final CompletableFuture<Collection<TaskManagerLocation>> preferredLocationsFuture = CompletableFuture.completedFuture(preferredSourceLocations);
 
 			return preferredLocationsFuture
 				.thenCompose(
@@ -1215,6 +1338,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	 */
 	@VisibleForTesting
 	public CompletableFuture<Collection<TaskManagerLocation>> calculatePreferredLocations(LocationPreferenceConstraint locationPreferenceConstraint) {
+		//这里根据Vertex的输入得到preferredLocation
 		final Collection<CompletableFuture<TaskManagerLocation>> preferredLocationFutures = getVertex().getPreferredLocationsBasedOnInputs();
 		final CompletableFuture<Collection<TaskManagerLocation>> preferredLocationsFuture;
 

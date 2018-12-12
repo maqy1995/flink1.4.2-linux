@@ -276,7 +276,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** maqy add
 	 *  the source operator's prefer Location, is usually get through HDFS block information */
-	private Collection<TaskManagerLocation> preferedSourceLocation;
+	private Collection<TaskManagerLocation> preferredSourceLocations;
 
 	// ------ Fields that are only relevant for archived execution graphs ------------
 	private String jsonPlan;
@@ -879,15 +879,28 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	private void scheduleLazy(SlotProvider slotProvider) {
 		// simply take the vertices without inputs.
 
-		//maqy add
-		setPreferedSourceLocation();
+		//maqy add  初始化源数据所在节点信息
+		this.setPreferredSourceLocations();
 
 		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
 			if (ejv.getJobVertex().isInputVertex()) { //如果是源节点，则进行调度
-				ejv.scheduleAll(
-					slotProvider,
-					allowQueuedScheduling,
-					LocationPreferenceConstraint.ALL); // since it is an input vertex, the input based location preferences should be empty
+
+				final Collection<TaskManagerLocation> preferredSourceLocations = this.getPreferredSourceLocations();
+				if(preferredSourceLocations == null || preferredSourceLocations.isEmpty()){
+					//若preferredSourceLocations为空或者不存在则走原来的逻辑
+					ejv.scheduleAll(
+						slotProvider,
+						allowQueuedScheduling,
+						LocationPreferenceConstraint.ALL); // since it is an input vertex, the input based location preferences should be empty
+				}else {
+					//否则走我新加的，实际上就是多传入了一个preferredSourceLocations
+					ejv.scheduleAllFirst(
+						slotProvider,
+						allowQueuedScheduling,
+						preferredSourceLocations,
+						LocationPreferenceConstraint.ALL); // since it is an input vertex, the input based location preferences should be empty
+				}
+
 			}
 		}
 	}
@@ -1749,12 +1762,12 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** maqy add
 	 * set preferedSourceLocation  Collection<TaskManagerLocation> preferedSourceLocation
 	 */
-	public void setPreferedSourceLocation(){
+	public void setPreferredSourceLocations(){
 		//先得到SlotProvider，即scheduler
 		SlotProvider slotProvider=this.getSlotProvider();
 		if(slotProvider instanceof Scheduler){
-			//初始化preferedSourceLocation
-			this.preferedSourceLocation = new HashSet<>();
+			//初始化preferedSourceLocation ，Execution中的preferredLocations用的是ArrayList
+			this.preferredSourceLocations = new ArrayList<>();
 			//得到所有的instance
 			Map<String, List<Instance>> allInstancesByHost = ((Scheduler) slotProvider).getInstancesByHost();
 
@@ -1765,7 +1778,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					List<Instance> instances =entry.getValue();
 					for(Instance instance : instances){
 						//将满足条件的每个Instance的location加入到preferedSourceLocation
-						preferedSourceLocation.add(instance.getTaskManagerLocation());
+						preferredSourceLocations.add(instance.getTaskManagerLocation());
 					}
 				}
 			}
@@ -1779,7 +1792,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * get preferedSourceLocation
 	 */
 
-	public Collection<TaskManagerLocation> getPreferedSourceLocation(){
-		return this.preferedSourceLocation;
+	public Collection<TaskManagerLocation> getPreferredSourceLocations(){
+		return this.preferredSourceLocations;
 	}
 }

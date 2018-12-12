@@ -630,6 +630,27 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			locationPreferenceConstraint);
 	}
 
+	/**
+	 * maqy add
+	 * Schedules the current execution of source vertex.
+	 *
+	 * @param slotProvider to allocate the slots from
+	 * @param queued if the allocation can be queued
+	 * @param locationPreferenceConstraint constraint for the location preferences
+	 * @return
+	 */
+	public boolean scheduleForExecutionFirst(
+		SlotProvider slotProvider,
+		boolean queued,
+		Collection preferredSourceLocations,
+		LocationPreferenceConstraint locationPreferenceConstraint) {
+		return this.currentExecution.scheduleForExecutionFirst(
+			slotProvider,
+			queued,
+			preferredSourceLocations,
+			locationPreferenceConstraint);
+	}
+
 	@VisibleForTesting
 	public void deployToSlot(SimpleSlot slot) throws JobException {
 		if (this.currentExecution.tryAssignResource(slot)) {
