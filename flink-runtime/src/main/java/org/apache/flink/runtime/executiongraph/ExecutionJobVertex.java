@@ -46,6 +46,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
+import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.types.Either;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
@@ -493,7 +494,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	public void scheduleAllFirst(
 		SlotProvider slotProvider,
 		boolean queued,
-		Collection preferredSourceLocations,
+		Collection<TaskManagerLocation> preferredSourceLocations,
 		LocationPreferenceConstraint locationPreferenceConstraint) {
 
 		final ExecutionVertex[] vertices = this.taskVertices;
@@ -501,6 +502,19 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		// kick off the tasks
 		for (ExecutionVertex ev : vertices) {
 			ev.scheduleForExecutionFirst(slotProvider, queued, preferredSourceLocations, locationPreferenceConstraint);
+			//调度完成一个task之后，将preferredSourceLocations中的第一个元素放到最后。
+			TaskManagerLocation firstpreferredSourceLocation = null;
+			for(TaskManagerLocation preferredSourceLocation : preferredSourceLocations){
+				//得到第一个后就break
+				firstpreferredSourceLocation  = preferredSourceLocation;
+				//删掉第一个
+				preferredSourceLocations.remove(firstpreferredSourceLocation);
+				break;
+			}
+			if(firstpreferredSourceLocation != null){
+				//重新加入进去
+				preferredSourceLocations.add(firstpreferredSourceLocation);
+			}
 		}
 	}
 
