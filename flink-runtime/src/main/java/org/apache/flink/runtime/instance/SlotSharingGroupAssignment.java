@@ -411,8 +411,8 @@ public class SlotSharingGroupAssignment {
 		boolean didNotGetPreferred = false;
 
 		if (preferredLocations != null) {//如果有perferred location
-			for (TaskManagerLocation location : preferredLocations) {
 
+			for (TaskManagerLocation location : preferredLocations) {
 				// set the flag that we failed a preferred location. If one will be found,
 				// we return early anyways and skip the flag evaluation
 				didNotGetPreferred = true;
