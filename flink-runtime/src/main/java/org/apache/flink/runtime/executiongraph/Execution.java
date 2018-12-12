@@ -414,7 +414,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	public boolean scheduleForExecutionFirst(
 		SlotProvider slotProvider,
 		boolean queued,
-		Collection preferredSourceLocations,
+		Collection<TaskManagerLocation> preferredSourceLocations,
 		LocationPreferenceConstraint locationPreferenceConstraint) {
 		try {
 			final CompletableFuture<Execution> allocationFuture = allocateAndAssignSlotForExecutionFirst(
@@ -546,7 +546,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 	public CompletableFuture<Execution> allocateAndAssignSlotForExecutionFirst(
 		SlotProvider slotProvider,
 		boolean queued,
-		Collection preferredSourceLocations,
+		Collection<TaskManagerLocation> preferredSourceLocations,
 		LocationPreferenceConstraint locationPreferenceConstraint) throws IllegalExecutionStateException {
 
 		checkNotNull(slotProvider);

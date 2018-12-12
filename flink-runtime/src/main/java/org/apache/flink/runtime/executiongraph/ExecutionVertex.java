@@ -642,7 +642,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	public boolean scheduleForExecutionFirst(
 		SlotProvider slotProvider,
 		boolean queued,
-		Collection preferredSourceLocations,
+		Collection<TaskManagerLocation> preferredSourceLocations,
 		LocationPreferenceConstraint locationPreferenceConstraint) {
 		return this.currentExecution.scheduleForExecutionFirst(
 			slotProvider,
