@@ -358,7 +358,7 @@ public class Task implements Runnable, TaskActions {
 
 		final String taskNameWithSubtaskAndId = taskNameWithSubtask + " (" + executionId + ')';
 
-		// Produced intermediate result partitions
+		// Produced intermediate result partitions 结果分区的初始化
 		this.producedPartitions = new ResultPartition[resultPartitionDeploymentDescriptors.size()];
 		this.writers = new ResultPartitionWriter[resultPartitionDeploymentDescriptors.size()];
 
@@ -385,7 +385,7 @@ public class Task implements Runnable, TaskActions {
 			++counter;
 		}
 
-		// Consumed intermediate result partitions
+		// Consumed intermediate result partitions  初始化输入网关
 		this.inputGates = new SingleInputGate[inputGateDeploymentDescriptors.size()];
 		this.inputGatesById = new HashMap<>();
 
@@ -533,12 +533,14 @@ public class Task implements Runnable, TaskActions {
 		// ----------------------------
 		while (true) {
 			ExecutionState current = this.executionState;
+			//如果当前的执行状态为CREATED，则对其应用CAS操作，将其设置为DEPLOYING状态，如果设置成功，将退出while无限循环
 			if (current == ExecutionState.CREATED) {
 				if (transitionState(ExecutionState.CREATED, ExecutionState.DEPLOYING)) {
 					// success, we can start our work
 					break;
 				}
 			}
+			//如果当前执行状态为FAILED，则发出最终状态的通知消息，并退出run方法的执行
 			else if (current == ExecutionState.FAILED) {
 				// we were immediately failed. tell the TaskManager that we reached our final state
 				notifyFinalState();
@@ -547,6 +549,8 @@ public class Task implements Runnable, TaskActions {
 				}
 				return;
 			}
+			//如果当前执行状态为CANCELING，则对其应用cas操作，并将其修改为CANCELED状态，如果修改成功则发出最终状态通知消息，
+			//同时退出run方法的执行
 			else if (current == ExecutionState.CANCELING) {
 				if (transitionState(ExecutionState.CANCELING, ExecutionState.CANCELED)) {
 					// we were immediately canceled. tell the TaskManager that we reached our final state
@@ -615,7 +619,7 @@ public class Task implements Runnable, TaskActions {
 
 			LOG.info("Registering task at network: {}.", this);
 
-			network.registerTask(this);
+			network.registerTask(this); //向网络栈注册该任务对象
 
 			// add metrics for buffers
 			this.metrics.getIOMetricGroup().initializeBufferMetrics(this);

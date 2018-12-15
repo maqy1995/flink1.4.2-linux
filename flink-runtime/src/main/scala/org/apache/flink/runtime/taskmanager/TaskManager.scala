@@ -1191,7 +1191,7 @@ class TaskManager(
       val task = new Task(
         jobInformation,
         taskInformation,
-        tdd.getExecutionAttemptId,
+        tdd.getExecutionAttemptId, //tdd是任务描述符
         tdd.getAllocationId,
         tdd.getSubtaskIndex,
         tdd.getAttemptNumber,
@@ -1199,8 +1199,8 @@ class TaskManager(
         tdd.getInputGates,
         tdd.getTargetSlotNumber,
         tdd.getTaskStateHandles,
-        memoryManager,
-        ioManager,
+        memoryManager,  //内存管理器
+        ioManager,     //IO管理器
         network,
         bcVarManager,
         taskManagerConnection,
