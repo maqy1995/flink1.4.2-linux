@@ -451,7 +451,7 @@ public class Optimizer {
 		// propagates those estimates through the plan
 
 		GraphCreatingVisitor graphCreator = new GraphCreatingVisitor(defaultParallelism, defaultDataExchangeMode);
-		program.accept(graphCreator);
+		program.accept(graphCreator);//经过这一步，通过previsit得到各个optimizedNode，然后通过postvisit构建了边DagConnection
 
 		// if we have a plan with multiple data sinks, add logical optimizer nodes that have two data-sinks as children
 		// each until we have only a single root node. This allows to transparently deal with the nodes with
@@ -474,7 +474,8 @@ public class Optimizer {
 
 		// now that we have all nodes created and recorded which ones consume memory, tell the nodes their minimal
 		// guaranteed memory, for further cost estimations. We assume an equal distribution of memory among consumer tasks
-		rootNode.accept(new IdAndEstimatesVisitor(this.statistics));
+		rootNode.accept(new IdAndEstimatesVisitor(this.statistics));//这里得到了输入文件的大小，
+		// IdAndeEstimatesVisitor用来进行编号和预算的遍历
 
 		// We are dealing with operator DAGs, rather than operator trees.
 		// That requires us to deviate at some points from the classical DB optimizer algorithms.

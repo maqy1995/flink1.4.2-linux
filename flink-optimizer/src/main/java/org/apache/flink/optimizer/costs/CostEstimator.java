@@ -215,7 +215,7 @@ public abstract class CostEstimator {
 			addLocalMergeCost(firstInput, secondInput, driverCosts, costWeight);
 			break;
 
-			//混合哈希join的成本（第二个输入边是构建边，第一个输入边是扫描边）
+			//混合哈希join的成本（第一个输入边是构建边，第二个输入边是扫描边）
 		case HYBRIDHASH_BUILD_FIRST:
 		case RIGHT_HYBRIDHASH_BUILD_FIRST:
 		case LEFT_HYBRIDHASH_BUILD_FIRST:

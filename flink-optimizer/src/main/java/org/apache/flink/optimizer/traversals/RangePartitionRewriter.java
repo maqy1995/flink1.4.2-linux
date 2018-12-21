@@ -102,18 +102,18 @@ public class RangePartitionRewriter implements Visitor<PlanNode> {
 				iNode.acceptForStepFunction(this);
 			}
 		}
-
+		//提取当前所有的计划节点的输入通道
 		final Iterable<Channel> inputChannels = node.getInputs();
-		for (Channel channel : inputChannels) {
+		for (Channel channel : inputChannels) {//遍历输入通道
 			ShipStrategyType shipStrategy = channel.getShipStrategy();
 			// Make sure we only optimize the DAG for range partition, and do not optimize multi times.
-			if (shipStrategy == ShipStrategyType.PARTITION_RANGE) {
+			if (shipStrategy == ShipStrategyType.PARTITION_RANGE) {// 确保优化的通道的数据传输策略为范围分区
 
 				if(channel.getDataDistribution() == null) {
 					if (node.isOnDynamicPath()) {
 						throw new InvalidProgramException("Range Partitioning not supported within iterations if users do not supply the data distribution.");
 					}
-
+					//对该通道的范围分区进行“重写”，并将当前通道从源计划节点的通道中删除，然后加入新的通道集合
 					PlanNode channelSource = channel.getSource();
 					List<Channel> newSourceOutputChannels = rewriteRangePartitionChannel(channel);
 					channelSource.getOutgoingChannels().remove(channel);

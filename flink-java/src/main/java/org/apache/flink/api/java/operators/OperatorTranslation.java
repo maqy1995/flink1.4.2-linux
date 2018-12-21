@@ -47,11 +47,12 @@ public class OperatorTranslation {
 
 	public Plan translateToPlan(List<DataSink<?>> sinks, String jobName) {
 		List<GenericDataSinkBase<?>> planSinks = new ArrayList<>();
-
+		//遍历sinks集合
 		for (DataSink<?> sink : sinks) {
-			planSinks.add(translate(sink));
+			//将翻译生成的GenericDataSinkBase加入planSinks集合
+			planSinks.add(translate(sink));//对每个sink翻译
 		}
-
+		//以planSinks结合构建Plan对象
 		Plan p = new Plan(planSinks);
 		p.setJobName(jobName);
 		return p;
@@ -60,7 +61,7 @@ public class OperatorTranslation {
 	private <T> GenericDataSinkBase<T> translate(DataSink<T> sink) {
 
 		// translate the input recursively
-		Operator<T> input = translate(sink.getDataSet());
+		Operator<T> input = translate(sink.getDataSet());//调用重载方法
 
 		// translate the sink itself and connect it to the input
 		GenericDataSinkBase<T> translatedSink = sink.translateToDataFlow(input);

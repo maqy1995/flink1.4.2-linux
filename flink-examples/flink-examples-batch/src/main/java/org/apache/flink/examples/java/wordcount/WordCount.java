@@ -60,6 +60,8 @@ public class WordCount {
 		// make parameters available in the web interface
 		env.getConfig().setGlobalJobParameters(params);
 
+		//set parallelism
+		env.setParallelism(2);
 		// get input data
 		DataSet<String> text;
 		if (params.has("input")) {
@@ -75,7 +77,6 @@ public class WordCount {
 		DataSet<Tuple2<String, Integer>> counts =
 				// split up the lines in pairs (2-tuples) containing: (word,1)
 				text.flatMap(new Tokenizer())
-					.partitionByRange(0)
 				// group by the tuple field "0" and sum up tuple field "1"
 				.groupBy(0)
 				.sum(1);

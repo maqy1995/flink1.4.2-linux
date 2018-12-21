@@ -163,7 +163,7 @@ public class DataSourceNode extends OptimizerNode {
 			
 			BaseStatistics bs = null;
 			try {
-				bs = format.getStatistics(cachedStatistics);
+				bs = format.getStatistics(cachedStatistics);//这里面根据采样，确定了数据的信息
 			}
 			catch (Throwable t) {
 				if (Optimizer.LOG.isWarnEnabled()) {
@@ -173,6 +173,7 @@ public class DataSourceNode extends OptimizerNode {
 			
 			if (bs != null) {
 				final long len = bs.getTotalInputSize();
+				System.out.println(len);
 				if (len == BaseStatistics.SIZE_UNKNOWN) {
 					if (Optimizer.LOG.isInfoEnabled()) {
 						Optimizer.LOG.info("Compiler could not determine the size of input '" + inFormatDescription + "'. Using default estimates.");

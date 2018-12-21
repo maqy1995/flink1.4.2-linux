@@ -29,19 +29,19 @@ public interface EstimateProvider {
 	 * 
 	 * @return The estimated output size.
 	 */
-	long getEstimatedOutputSize();
+	long getEstimatedOutputSize(); //输出的数据流大小
 
 	/**
 	 * Gets the estimated number of records in the output of this node.
 	 * 
 	 * @return The estimated number of records.
 	 */
-	long getEstimatedNumRecords();
+	long getEstimatedNumRecords(); //输出的记录数
 	
 	/**
 	 * Gets the estimated number of bytes per record.
 	 * 
 	 * @return The estimated number of bytes per record.
 	 */
-	float getEstimatedAvgWidthPerOutputRecord();
+	float getEstimatedAvgWidthPerOutputRecord(); //单个输出记录的平均字节数
 }
