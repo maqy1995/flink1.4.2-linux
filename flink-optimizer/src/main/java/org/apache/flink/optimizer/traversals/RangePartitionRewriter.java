@@ -116,7 +116,9 @@ public class RangePartitionRewriter implements Visitor<PlanNode> {
 					//对该通道的范围分区进行“重写”，并将当前通道从源计划节点的通道中删除，然后加入新的通道集合
 					PlanNode channelSource = channel.getSource();
 					List<Channel> newSourceOutputChannels = rewriteRangePartitionChannel(channel);
+					//移除原来的OutgoingChannels
 					channelSource.getOutgoingChannels().remove(channel);
+					//添加新的OutgoingChannels
 					channelSource.getOutgoingChannels().addAll(newSourceOutputChannels);
 				}
 			}
@@ -124,56 +126,81 @@ public class RangePartitionRewriter implements Visitor<PlanNode> {
 	}
 
 	private List<Channel> rewriteRangePartitionChannel(Channel channel) {
+		//RangePartition前驱Operator的输出？
 		final List<Channel> sourceNewOutputChannels = new ArrayList<>();
+		//sourceNode是RangePartition的前驱Operator
 		final PlanNode sourceNode = channel.getSource();
+		//targetNode就是RangePartition该Operator
 		final PlanNode targetNode = channel.getTarget();
+		//得到并行度
 		final int sourceParallelism = sourceNode.getParallelism();
 		final int targetParallelism = targetNode.getParallelism();
 		final Costs defaultZeroCosts = new Costs(0, 0, 0);
 		final TypeComparatorFactory<?> comparator = Utils.getShipComparator(channel, this.plan.getOriginalPlan().getExecutionConfig());
+
 		// 1. Fixed size sample in each partitions.
 		final int sampleSize = SAMPLES_PER_PARTITION * targetParallelism;
+		//SampleInPartition继承自RichMapPartitionFunction，用于各分区的采样,SampleInPartition在Flink-core中，RichMapPartitionFunction则在flink-runtime中
 		final SampleInPartition sampleInPartition = new SampleInPartition(false, sampleSize, SEED);
+		//得到RangePartition的前驱Operator的输出格式，即RangePartition的接受格式
 		final TypeInformation<?> sourceOutputType = sourceNode.getOptimizerNode().getOperator().getOperatorInfo().getOutputType();
+		//IntermediateSampleData中存储了元素值和权重weight
 		final TypeInformation<IntermediateSampleData> isdTypeInformation = TypeExtractor.getForClass(IntermediateSampleData.class);
 		final UnaryOperatorInformation sipOperatorInformation = new UnaryOperatorInformation(sourceOutputType, isdTypeInformation);
+		//MapPartitionOperatorBase是flink-core中的类
 		final MapPartitionOperatorBase sipOperatorBase = new MapPartitionOperatorBase(sampleInPartition, sipOperatorInformation, SIP_NAME);
+		//采样的Map节点，MapPartitionNode是flink-optimizer中dag包的类，其中只有DagConnection
 		final MapPartitionNode sipNode = new MapPartitionNode(sipOperatorBase);
+		//新建一个Channel，该Channel的source是RangePartition的前驱Operator
 		final Channel sipChannel = new Channel(sourceNode, TempMode.NONE);
 		sipChannel.setShipStrategy(ShipStrategyType.FORWARD, DataExchangeMode.PIPELINED);
+		//SingleInputPlanNode也是flink-optimizer中plan包的类，其中多了Channel input 的信息，应该是用在OptimizedPlan中的
 		final SingleInputPlanNode sipPlanNode = new SingleInputPlanNode(sipNode, SIP_NAME, sipChannel, DriverStrategy.MAP_PARTITION);
 		sipNode.setParallelism(sourceParallelism);
 		sipPlanNode.setParallelism(sourceParallelism);
 		sipPlanNode.initProperties(new GlobalProperties(), new LocalProperties());
 		sipPlanNode.setCosts(defaultZeroCosts);
+		//设置新加的Channel的target节点为新创建的采样MapPartitionNode
 		sipChannel.setTarget(sipPlanNode);
 		this.plan.getAllNodes().add(sipPlanNode);
 		sourceNewOutputChannels.add(sipChannel);
 
 		// 2. Fixed size sample in a single coordinator.
+		//SampleInCoordinator实现了GroupReduceFunction,用于将各分区的采样混合？
 		final SampleInCoordinator sampleInCoordinator = new SampleInCoordinator(false, sampleSize, SEED);
 		final UnaryOperatorInformation sicOperatorInformation = new UnaryOperatorInformation(isdTypeInformation, sourceOutputType);
+		//GroupReduceOperatorBase是flink-core中的
 		final GroupReduceOperatorBase sicOperatorBase = new GroupReduceOperatorBase(sampleInCoordinator, sicOperatorInformation, SIC_NAME);
+		//Reduce节点，GroupReduceNode-optimizer中dag的类，其中有DagConnection
 		final GroupReduceNode sicNode = new GroupReduceNode(sicOperatorBase);
+		//初始化一个新的Channel，其Source是1.中的Map算子
 		final Channel sicChannel = new Channel(sipPlanNode, TempMode.NONE);
 		sicChannel.setShipStrategy(ShipStrategyType.FORWARD, DataExchangeMode.PIPELINED);
+		//同理，根据sicNode和Channel信息构建PlanNode，是flink-optimizer中plan中的类
 		final SingleInputPlanNode sicPlanNode = new SingleInputPlanNode(sicNode, SIC_NAME, sicChannel, DriverStrategy.ALL_GROUP_REDUCE);
+		//注意这里的并行度需要设置为1，因为要将各节点的样本根据权值进行聚合到一起，相当于中心Coordinate的作用
 		sicNode.setParallelism(1);
 		sicPlanNode.setParallelism(1);
 		sicPlanNode.initProperties(new GlobalProperties(), new LocalProperties());
 		sicPlanNode.setCosts(defaultZeroCosts);
+		//设置Channel的Target
 		sicChannel.setTarget(sicPlanNode);
 		sipPlanNode.addOutgoingChannel(sicChannel);
 		this.plan.getAllNodes().add(sicPlanNode);
 
 		// 3. Use sampled data to build range boundaries.
+		//RangeBoundaryBuilder实现了RichMapPartitionFunction，用于计算各个分段的界
 		final RangeBoundaryBuilder rangeBoundaryBuilder = new RangeBoundaryBuilder(comparator, targetParallelism);
 		final TypeInformation<CommonRangeBoundaries> rbTypeInformation = TypeExtractor.getForClass(CommonRangeBoundaries.class);
 		final UnaryOperatorInformation rbOperatorInformation = new UnaryOperatorInformation(sourceOutputType, rbTypeInformation);
+		//MapPartitionOperatorBase是flink-core中的类
 		final MapPartitionOperatorBase rbOperatorBase = new MapPartitionOperatorBase(rangeBoundaryBuilder, rbOperatorInformation, RB_NAME);
+		//Map节点，MapPartitionNode是flink-optimizer中dag的类，其中只有DagConnection
 		final MapPartitionNode rbNode = new MapPartitionNode(rbOperatorBase);
+		//创建以2.中reduce的节点为Source的Channel
 		final Channel rbChannel = new Channel(sicPlanNode, TempMode.NONE);
 		rbChannel.setShipStrategy(ShipStrategyType.FORWARD, DataExchangeMode.PIPELINED);
+		//创建PlanNode，flink-optimizer中plan中的类
 		final SingleInputPlanNode rbPlanNode = new SingleInputPlanNode(rbNode, RB_NAME, rbChannel, DriverStrategy.MAP_PARTITION);
 		rbNode.setParallelism(1);
 		rbPlanNode.setParallelism(1);
@@ -184,42 +211,61 @@ public class RangePartitionRewriter implements Visitor<PlanNode> {
 		this.plan.getAllNodes().add(rbPlanNode);
 
 		// 4. Take range boundaries as broadcast input and take the tuple of partition id and record as output.
+		//AssignRangeIndex实现了RichMapPartitionFunction，利用了boundary来得到每个记录的输出
 		final AssignRangeIndex assignRangeIndex = new AssignRangeIndex(comparator);
 		final TypeInformation<Tuple2> ariOutputTypeInformation = new TupleTypeInfo<>(BasicTypeInfo.INT_TYPE_INFO, sourceOutputType);
 		final UnaryOperatorInformation ariOperatorInformation = new UnaryOperatorInformation(sourceOutputType, ariOutputTypeInformation);
+		//MapPartitionOperatorBase是flink-core中的类
 		final MapPartitionOperatorBase ariOperatorBase = new MapPartitionOperatorBase(assignRangeIndex, ariOperatorInformation, ARI_NAME);
+		//Map节点，MapPartitionNode是flink-optimizer中dag的类，其中只有DagConnection
 		final MapPartitionNode ariNode = new MapPartitionNode(ariOperatorBase);
+		//创建以RangePartition的前驱Operator为Source的Channel
 		final Channel ariChannel = new Channel(sourceNode, TempMode.NONE);
 		// To avoid deadlock, set the DataExchangeMode of channel between source node and this to Batch.
+		//为了防止死锁，将Channel的DataExchangeMode设置为Batch
 		ariChannel.setShipStrategy(ShipStrategyType.FORWARD, DataExchangeMode.BATCH);
+		//创建PlanNode，flink-optimizer中plan中的类
 		final SingleInputPlanNode ariPlanNode = new SingleInputPlanNode(ariNode, ARI_NAME, ariChannel, DriverStrategy.MAP_PARTITION);
 		ariNode.setParallelism(sourceParallelism);
 		ariPlanNode.setParallelism(sourceParallelism);
 		ariPlanNode.initProperties(new GlobalProperties(), new LocalProperties());
 		ariPlanNode.setCosts(defaultZeroCosts);
+		//将创建的Channel的Target指向新创建的Map Operator
 		ariChannel.setTarget(ariPlanNode);
 		this.plan.getAllNodes().add(ariPlanNode);
+		//将新创建的Channel添加到RangePartition的前一个Operator的sourceNewOutputChannels中
 		sourceNewOutputChannels.add(ariChannel);
 
+		//计算得到的boundaries会被输出到广播通道，rbPlanNode即Channel的sourceNode，为step3创建的map节点，用于计算各个分段的界的
 		final NamedChannel broadcastChannel = new NamedChannel("RangeBoundaries", rbPlanNode);
 		broadcastChannel.setShipStrategy(ShipStrategyType.BROADCAST, DataExchangeMode.PIPELINED);
+		//将Channel的Target指向step4创建的Map Operator，用于得到每个记录属于哪个分区的
 		broadcastChannel.setTarget(ariPlanNode);
 		List<NamedChannel> broadcastChannels = new ArrayList<>(1);
 		broadcastChannels.add(broadcastChannel);
+		//broadcastChannels的source是计算各个分段界的rbPlanNode，target是根据界将各个记录分离的ariPlanNode
+		//这里将broadcastChannels添加给ariPlanNode
 		ariPlanNode.setBroadcastInputs(broadcastChannels);
 
 		// 5. Remove the partition id.
+		//创建Channel，source为将各个记录分离的ariPlanNode
 		final Channel partChannel = new Channel(ariPlanNode, TempMode.NONE);
 		final FieldList keys = new FieldList(0);
 		partChannel.setShipStrategy(ShipStrategyType.PARTITION_CUSTOM, keys, idPartitioner, DataExchangeMode.PIPELINED);
 		ariPlanNode.addOutgoingChannel(partChannel);
 
+		//RemoveRangeIndex继承自MapFunction，从泛型<Tuple2<Integer,T>,T>中可知，其通过将Tuple2<Integer,T>map为T将分区信息进行删除
+		//因为找到记录的分区之后，分区编号就没有存在的意义了，因此为流中的记录移除分区编号
 		final RemoveRangeIndex partitionIDRemoveWrapper = new RemoveRangeIndex();
 		final UnaryOperatorInformation prOperatorInformation = new UnaryOperatorInformation(ariOutputTypeInformation, sourceOutputType);
 		final MapOperatorBase prOperatorBase = new MapOperatorBase(partitionIDRemoveWrapper, prOperatorInformation, PR_NAME);
+		//Map节点，MapNode是flink-optimizer中dag的类，其中只有DagConnection信息
 		final MapNode prRemoverNode = new MapNode(prOperatorBase);
+		//创建PlanNode，flink-optimizer中plan中的类
 		final SingleInputPlanNode prPlanNode = new SingleInputPlanNode(prRemoverNode, PR_NAME, partChannel, DriverStrategy.MAP);
+		//设置Channel的target，target为新创建的Map Operator，该map消除了数据中的分区信息，只保留原始记录
 		partChannel.setTarget(prPlanNode);
+		//将新创建的节点并行度设置为RangePartition节点的后继节点的并行度
 		prRemoverNode.setParallelism(targetParallelism);
 		prPlanNode.setParallelism(targetParallelism);
 		GlobalProperties globalProperties = new GlobalProperties();
@@ -229,6 +275,7 @@ public class RangePartitionRewriter implements Visitor<PlanNode> {
 		this.plan.getAllNodes().add(prPlanNode);
 
 		// 6. Connect to target node.
+		//将原来的RangePartition算子的输入Channel的source设置为prPlanNode
 		channel.setSource(prPlanNode);
 		channel.setShipStrategy(ShipStrategyType.FORWARD, DataExchangeMode.PIPELINED);
 		prPlanNode.addOutgoingChannel(channel);

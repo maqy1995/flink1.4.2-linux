@@ -61,13 +61,14 @@ public class RangeBoundaryBuilder<T> extends RichMapPartitionFunction<T, Object[
 		int boundarySize = parallelism - 1;
 		Object[][] boundaries = new Object[boundarySize][];
 		if (sampledData.size() > 0) {
-			double avgRange = sampledData.size() / (double) parallelism;
+			double avgRange = sampledData.size() / (double) parallelism;//计算拆分的段
 			int numKey = comparator.getFlatComparators().length;
-			for (int i = 1; i < parallelism; i++) {
-				T record = sampledData.get((int) (i * avgRange));
+			for (int i = 1; i < parallelism; i++) {//每个并行度（分区）一个边界值
+				T record = sampledData.get((int) (i * avgRange));//计算得到靠近段尾的采样记录作为边界界定标准
 				Object[] keys = new Object[numKey];
 				comparator.extractKeys(record, keys, 0);
 				boundaries[i-1] = keys;
+				System.out.println("maqy add:boundaries["+i+"]:"+keys.toString());
 			}
 		}
 
