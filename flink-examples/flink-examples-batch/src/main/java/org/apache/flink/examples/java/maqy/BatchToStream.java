@@ -1,4 +1,12 @@
 package org.apache.flink.examples.java.maqy;
+/**
+ * 实现Flink中Batch的WordCount到流的WordCount的转换
+ * 注意：流的WordCount相同的逻辑，每来一个新元素都会进行一次输出，所以输出结果会不同
+ *
+ * Flink版本：1.4.2
+ * @author maqy
+ * @date 2018.08.11
+ */
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.io.InputFormat;
@@ -11,6 +19,7 @@ import org.apache.flink.api.java.aggregation.SumAggregationFunction;
 import org.apache.flink.api.java.io.TextInputFormat;
 import org.apache.flink.api.java.io.TextOutputFormat;
 import org.apache.flink.api.java.operators.*;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -21,10 +30,6 @@ import org.apache.flink.util.Collector;
 import java.util.List;
 
 public class BatchToStream {
-
-	//
-	//	Program
-	//
 
 	public static void main(String[] args) throws Exception {
 
@@ -39,15 +44,16 @@ public class BatchToStream {
 //				"The slings and arrows of outrageous fortune",
 //				"Or to take arms against a sea of troubles,"
 //				);
-		DataSet<String> a = env.readTextFile("/home/maqy/桌面/out/test");
+		//输入文件
+		DataSet<String> a = env.readTextFile("F:\\test.txt");
 
-		DataSet<Tuple3<String, Integer, Integer>> b = a.flatMap(new LineSplitter());
+		DataSet<Tuple2<String, Integer>> b = a.flatMap(new LineSplitter());
 
 		//DataSet<Tuple2<String, Integer>> d = b.sum(1);
-		DataSet<Tuple3<String, Integer, Integer>> c = b.groupBy(0)
+		DataSet<Tuple2<String, Integer>> c = b.groupBy(0)
 			.sum(1);
 		//sink必须单独写？？？？，放在上一行后头会报错,原因是因为返回的是datasink类型
-		c.writeAsText("/home/maqy/桌面/out/out1");
+		c.writeAsText("F:\\output\\batchToStream");
 
 //		DataSet<Tuple2<String, Integer>> counts = env.readTextFile("/home/maqy/桌面/out/test")
 //				// split up the lines in pairs (2-tuples) containing: (word,1)
@@ -60,13 +66,13 @@ public class BatchToStream {
 //		counts.writeAsText("/home/maqy/桌面/out/out1");
 
 		StreamExecutionEnvironment envStream = batchToStream(env);
-		//执行程序
+		//执行程序的是流的Environment
 		//env.execute("batch job~~~~~~~~~~~~~~");
-		envStream.execute("StreamJob~~~~~~~~~~~~~");
+		env.execute("StreamJob~~~~~~~~~~~~~");
 
 	}
 
-	//实现批的环境到流的环境的转换
+	//实现批的环境到流的环境的转换,传入envBatch，返回StreamExecutionEnvironment
 	public static StreamExecutionEnvironment batchToStream(ExecutionEnvironment envBatch) throws Exception {
 		//创建一个新的流环境，用于返回的
 		StreamExecutionEnvironment envStream = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -230,17 +236,17 @@ public class BatchToStream {
 	 * FlatMapFunction. The function takes a line (String) and splits it into
 	 * multiple pairs in the form of "(word,1)" (Tuple2&lt;String, Integer&gt;).
 	 */
-	public static final class LineSplitter implements FlatMapFunction<String, Tuple3<String, Integer , Integer>> {
+	public static final class LineSplitter implements FlatMapFunction<String, Tuple2<String, Integer>> {
 
 		@Override
-		public void flatMap(String value, Collector<Tuple3<String, Integer ,Integer>> out) {
+		public void flatMap(String value, Collector<Tuple2<String, Integer>> out) {
 			// normalize and split the line
 			String[] tokens = value.toLowerCase().split("\\W+");
 
 			// emit the pairs
 			for (String token : tokens) {
 				if (token.length() > 0) {
-					out.collect(new Tuple3<String, Integer ,Integer>(token, 1 , 10));
+					out.collect(new Tuple2<String, Integer>(token, 1 ));
 				}
 			}
 		}
