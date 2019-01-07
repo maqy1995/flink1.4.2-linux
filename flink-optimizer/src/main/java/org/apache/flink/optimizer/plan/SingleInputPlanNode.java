@@ -195,13 +195,15 @@ public class SingleInputPlanNode extends PlanNode {
 
 	@Override
 	public void accept(Visitor<PlanNode> visitor) {
+		//前置遍历，如果返回值为true，才会进行更进一步的后续操作
 		if (visitor.preVisit(this)) {
+			//获取到当前sink的输入端继续遍历，该调用会引发递归调用
 			this.input.getSource().accept(visitor);
-			
+			//获得所有的广播输入通道，对所有的广播输入通道源进行遍历
 			for (Channel broadcastInput : getBroadcastInputs()) {
 				broadcastInput.getSource().accept(visitor);
 			}
-			
+			//进行后置遍历
 			visitor.postVisit(this);
 		}
 	}

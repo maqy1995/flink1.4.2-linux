@@ -494,7 +494,7 @@ public class Optimizer {
 		}
 
 		// the final step is now to generate the actual plan alternatives
-		List<PlanNode> bestPlan = rootNode.getAlternativePlans(this.costEstimator);
+		List<PlanNode> bestPlan = rootNode.getAlternativePlans(this.costEstimator);//在这一步构建了Channel
 
 		if (bestPlan.size() != 1) {
 			throw new CompilerException("Error in compiler: more than one best plan was created!");

@@ -1144,7 +1144,7 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 
 		JobEdge edge = targetVertex.connectNewDataSetAsInput(sourceVertex, distributionPattern, resultType);
 
-		// -------------- configure the source task's ship strategy strategies in task config --------------
+		// -------------- maqy configure the source task's ship strategy strategies in task config --------------
 		final int outputIndex = sourceConfig.getNumOutputs();
 		sourceConfig.addOutputShipStrategy(channel.getShipStrategy());
 		if (outputIndex == 0) {

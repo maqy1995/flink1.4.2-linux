@@ -48,7 +48,7 @@ public class MapPartition {
                 }
             }
         });
-        //DataSet<Tuple2<String,Inte ger>> RangeWords = words.partitionByHash(0);
+        //DataSet<Tuple2<String,Integer>> RangeWords = words.partitionByHash(0);
 		DataSet<Tuple2<String,Integer>> RangeWords = words.partitionByRange(0);
         //DataSet<Tuple2<String,Integer>> RangeWords1 = words.partitionCustom(new MyPartition(),0);
         //words.print();
