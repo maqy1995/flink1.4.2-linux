@@ -391,7 +391,7 @@ public class Task implements Runnable, TaskActions {
 
 		counter = 0;
 
-		for (InputGateDeploymentDescriptor inputGateDeploymentDescriptor: inputGateDeploymentDescriptors) {
+		for (InputGateDeploymentDescriptor inputGateDeploymentDescriptor: inputGateDeploymentDescriptors) {//一个IntermediateResult只有一个inputGate
 			SingleInputGate gate = SingleInputGate.create(
 				taskNameWithSubtaskAndId,
 				jobId,

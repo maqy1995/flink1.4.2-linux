@@ -31,10 +31,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class IntermediateResult {
 
 	private final IntermediateDataSetID id;
-
+	//生产该IntermediateResult的ExecutionJobVertex
 	private final ExecutionJobVertex producer;
-
-	private final IntermediateResultPartition[] partitions;
+	//该IntermediateResult中的IntermediateResultPartition
+	private final IntermediateResultPartition[] partitions; //这里和并行度对应
 
 	/**
 	 * Maps intermediate result partition IDs to a partition index. This is

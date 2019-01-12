@@ -80,13 +80,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	// --------------------------------------------------------------------------------------------
 
-	private final ExecutionJobVertex jobVertex;
-
+	private final ExecutionJobVertex jobVertex;//存储的ExecutionJobVertex
+	//产生的结果和ID的映射，注意IntermediateResultPartition是IntermediateResult的一部分(IntermediateResultPartition[] partitions)
 	private final Map<IntermediateResultPartitionID, IntermediateResultPartition> resultPartitions;
 
-	private final ExecutionEdge[][] inputEdges;
+	private final ExecutionEdge[][] inputEdges;//输入边，一般第一维就是1
 
-	private final int subTaskIndex;
+	private final int subTaskIndex;//ExecutionJobVertex中的第几个ExecutionVertex
 
 	private final EvictingBoundedList<Execution> priorExecutions;
 
@@ -149,14 +149,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		this.resultPartitions = new LinkedHashMap<>(producedDataSets.length, 1);
 
-		for (IntermediateResult result : producedDataSets) {
+		for (IntermediateResult result : producedDataSets) {//producedDataSets是JobVertex层面的，IntermediateResultPartition是ExecutionVertex层面的。
 			IntermediateResultPartition irp = new IntermediateResultPartition(result, this, subTaskIndex);
 			result.setPartition(subTaskIndex, irp);
 
 			resultPartitions.put(irp.getPartitionId(), irp);
 		}
 
-		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];
+		this.inputEdges = new ExecutionEdge[jobVertex.getJobVertex().getInputs().size()][];//初始化的时候，与JobEdge的数目相同
 
 		this.priorExecutions = new EvictingBoundedList<>(maxPriorExecutionHistoryLength);
 
@@ -330,10 +330,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	// --------------------------------------------------------------------------------------------
 
 	public void connectSource(int inputNumber, IntermediateResult source, JobEdge edge, int consumerNumber) {
-
+		//	注意是JobEdge		第几条入边     该入边的IntermediateResult     该入边        该入边的IntermediateResult的第几个消费者
 		//这里有连接策略
 		final DistributionPattern pattern = edge.getDistributionPattern();
-		final IntermediateResultPartition[] sourcePartitions = source.getPartitions();
+		final IntermediateResultPartition[] sourcePartitions = source.getPartitions();//这里和并行度对应
 
 		ExecutionEdge[] edges;
 
@@ -351,7 +351,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 		}
 
-		this.inputEdges[inputNumber] = edges;
+		this.inputEdges[inputNumber] = edges;//为什么是二维数组就是因为，可能一条JobEdge的入边会有多个个ExecutionEdge。例如ALL_TO_ALL时
 
 		// add the consumers to the source
 		// for now (until the receiver initiated handshake is in place), we need to register the
@@ -363,7 +363,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 
 	private ExecutionEdge[] connectAllToAll(IntermediateResultPartition[] sourcePartitions, int inputNumber) {
 		ExecutionEdge[] edges = new ExecutionEdge[sourcePartitions.length];
-
+		//如果是ALL_TO_ALL，则会生成和并行度一样的边数。
 		for (int i = 0; i < sourcePartitions.length; i++) {
 			IntermediateResultPartition irp = sourcePartitions[i];
 			edges[i] = new ExecutionEdge(irp, this, inputNumber);
@@ -373,10 +373,10 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	}
 
 	private ExecutionEdge[] connectPointwise(IntermediateResultPartition[] sourcePartitions, int inputNumber) {
-		final int numSources = sourcePartitions.length;
+		final int numSources = sourcePartitions.length;//inputNumber表示第几条入边(JobEdge)
 		final int parallelism = getTotalNumberOfParallelSubtasks();
 
-		// simple case same number of sources as targets
+		// simple case same number of sources as targets 根据subTaskIndex来创建对应的ExecutionEdge，和并行度一一对应
 		if (numSources == parallelism) {
 			return new ExecutionEdge[] { new ExecutionEdge(sourcePartitions[subTaskIndex], this, inputNumber) };
 		}
@@ -489,7 +489,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	 * a、如果没有输入源,则返回空集合,对于数据源节点来说,就是返回空集合;
 	 * b、如果有输入源,则对每个输入源,都找出其所有分区所在的TaskManager的位置,
 	 * 如果某个输入源的分区所在位置超过MAX_DISTINCT_LOCATIONS_TO_CONSIDER(默认值为8),
-	 * 则不考虑这个输入源,直接跳过,然后将满足条件的输入源中,分区位置分布做少的那个数据源对应的TaskManager的位置集合,作为计算结果返回。
+	 * 则不考虑这个输入源,直接跳过,然后将满足条件的输入源中,分区位置分布最少的那个数据源对应的TaskManager的位置集合,作为计算结果返回。
 	 */
 	public Collection<CompletableFuture<TaskManagerLocation>> getPreferredLocationsBasedOnInputs() {
 		// otherwise, base the preferred locations on the input connections
@@ -501,7 +501,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			Set<CompletableFuture<TaskManagerLocation>> locations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //现在的分布？
 			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //输入的分布
 
-			// go over all inputs
+			// go over all inputs 遍历所有inputs
 			for (int i = 0; i < inputEdges.length; i++) {
 				inputLocations.clear();
 				ExecutionEdge[] sources = inputEdges[i];
@@ -682,7 +682,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 	}
 
 	/**
-	 * Schedules or updates the consumer tasks of the result partition with the given ID.
+	 * Schedules or updates the consumer tasks of the result partition with the given ID. maqy
 	 */
 	void scheduleOrUpdateConsumers(ResultPartitionID partitionId) {
 
@@ -783,16 +783,16 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			TaskStateSnapshot taskStateHandles,
 			int attemptNumber) throws ExecutionGraphException {
 		
-		// Produced intermediate results
+		// Produced intermediate results  产生的中间结果
 		List<ResultPartitionDeploymentDescriptor> producedPartitions = new ArrayList<>(resultPartitions.size());
 		
-		// Consumed intermediate results
+		// Consumed intermediate results  需要消费的中间结果
 		List<InputGateDeploymentDescriptor> consumedPartitions = new ArrayList<>(inputEdges.length);
 		
 		boolean lazyScheduling = getExecutionGraph().getScheduleMode().allowLazyDeployment();
 
-		for (IntermediateResultPartition partition : resultPartitions.values()) {
-
+		for (IntermediateResultPartition partition : resultPartitions.values()) { //处理产生的中间结果
+			//ExecutionEdge是IntermediateResultPartition的消费者，虽然ExecutionEdge可以有多个，但是List<ExecutionEdge>的size只能为1
 			List<List<ExecutionEdge>> consumers = partition.getConsumers();
 
 			if (consumers.isEmpty()) {
@@ -813,7 +813,7 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 		
 		
-		for (ExecutionEdge[] edges : inputEdges) {
+		for (ExecutionEdge[] edges : inputEdges) {  //处理需要消费的中间结果 这里的inputEdges第一维一般就是1
 			InputChannelDeploymentDescriptor[] partitions = InputChannelDeploymentDescriptor
 					.fromEdges(edges, targetSlot, lazyScheduling);
 

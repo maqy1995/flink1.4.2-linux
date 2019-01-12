@@ -103,13 +103,13 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 	 */
 	private final List<OperatorID> userDefinedOperatorIds;
 
-	private final ExecutionVertex[] taskVertices;
+	private final ExecutionVertex[] taskVertices;//存储的ExecutionVertex
 
-	private final IntermediateResult[] producedDataSets;
+	private final IntermediateResult[] producedDataSets;//产生的中间结果，和JobGraph的IntermediateDataSet对应
 
-	private final List<IntermediateResult> inputs;
+	private final List<IntermediateResult> inputs;//输入到该ExecutionJobVertex的IntermediateResult
 
-	private final int parallelism;
+	private final int parallelism;//并行度
 
 	private final SlotSharingGroup slotSharingGroup;
 
@@ -199,7 +199,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 		}
 		
 		// create the intermediate results
-		// 将IntermediateDataSets转化为IntermediateResult
+		// 将IntermediateDataSets转化为IntermediateResult，这个和并行度无关
 		this.producedDataSets = new IntermediateResult[jobVertex.getNumberOfProducedIntermediateDataSets()];
 
 		for (int i = 0; i < jobVertex.getProducedDataSets().size(); i++) {
@@ -440,6 +440,7 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			
 			// fetch the intermediate result via ID. if it does not exist, then it either has not been created, or the order
 			// in which this method is called for the job vertices is not a topological order
+			//intermediateDataSets中，存储了ExecutionGraph中已处理过的所有节点的intermediateDataSet，从其中得到了当前节点的输入边中的IntermediateResult
 			IntermediateResult ires = intermediateDataSets.get(edge.getSourceId());
 			if (ires == null) {
 				throw new JobException("Cannot connect this job graph to the previous graph. No previous intermediate result found for ID "
@@ -448,12 +449,12 @@ public class ExecutionJobVertex implements AccessExecutionJobVertex, Archiveable
 			
 			this.inputs.add(ires);
 			
-			int consumerIndex = ires.registerConsumer();
+			int consumerIndex = ires.registerConsumer();//一个IntermediateResult只会有一个consumer
 			
 			for (int i = 0; i < parallelism; i++) {
 				ExecutionVertex ev = taskVertices[i];
 				//这里指定了连接策略
-				ev.connectSource(num, ires, edge, consumerIndex);//num:第num条边，即第num个消费者,这里已经区分了每个并行度
+				ev.connectSource(num, ires, edge, consumerIndex);//num是第num条jobEdge
 			}
 		}
 	}

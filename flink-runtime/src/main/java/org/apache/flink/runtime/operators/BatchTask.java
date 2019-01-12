@@ -1006,7 +1006,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 	 */
 	protected void initOutputs() throws Exception {
 		this.chainedTasks = new ArrayList<ChainedDriver<?, ?>>();
-		this.eventualOutputs = new ArrayList<RecordWriter<?>>();
+		this.eventualOutputs = new ArrayList<RecordWriter<?>>();//注意这里有RecordWriter
 
 		ClassLoader userCodeClassLoader = getUserCodeClassLoader();
 

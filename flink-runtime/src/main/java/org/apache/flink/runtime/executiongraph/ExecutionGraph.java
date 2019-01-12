@@ -64,6 +64,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
+import org.apache.flink.runtime.maqy.PreferredSourceLocationsComparator;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateBackend;
@@ -818,7 +819,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				globalModVersion,
 				createTimestamp);
 
-			// 将新建的ExecutionJobVertex实例, 与其前置处理器建立连接
+			// 将新建的ExecutionJobVertex实例, 与其前置处理器建立连接，注意是从source到sink
 			ejv.connectToPredecessors(this.intermediateResults);   //这个intermediateResults第一次还没有初始化，834行会进行添加
 			//通过上一行将每个ExecutionJobVertex与之前的进行了连接，
 			//将构建好的ejv,记录下来,如果发现对一个的jobVertexID已经存在一个ExecutionJobVertex,则需要抛异常
@@ -1782,10 +1783,9 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 					}
 				}
 			}
-
+			// 对preferredSourceLocations排序
+			Collections.sort((ArrayList)preferredSourceLocations,new PreferredSourceLocationsComparator());
 		}
-
-
 	}
 
 	/** maqy add

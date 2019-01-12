@@ -107,10 +107,10 @@ public class InputChannelDeploymentDescriptor implements Serializable {
 						producerState == ExecutionState.FINISHED ||
 						producerState == ExecutionState.SCHEDULED ||
 						producerState == ExecutionState.DEPLOYING)) {
-
+				//得到产生待消费的IntermediateResultPartition的Execution的所在TaskManager的位置信息
 				final TaskManagerLocation partitionTaskManagerLocation = producerSlot.getTaskManagerLocation();
 				final ResourceID partitionTaskManager = partitionTaskManagerLocation.getResourceID();
-
+				//如果是和消费该IntermediateResultPartition的位置相同
 				if (partitionTaskManager.equals(consumerTaskManager)) {
 					// Consuming task is deployed to the same TaskManager as the partition => local
 					partitionLocation = ResultPartitionLocation.createLocal();

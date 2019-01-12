@@ -654,7 +654,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 						attemptNumber, getAssignedResourceLocation().getHostname()));
 			}
 
-			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(
+			final TaskDeploymentDescriptor deployment = vertex.createDeploymentDescriptor(//这里封装了很多信息
 				attemptId,
 				slot,
 				taskState,

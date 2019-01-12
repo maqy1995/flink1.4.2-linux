@@ -50,7 +50,7 @@ public class RangeBoundaryBuilder<T> extends RichMapPartitionFunction<T, Object[
 		for (T value : values) {
 			sampledData.add(value);
 		}
-		Collections.sort(sampledData, new Comparator<T>() {
+		Collections.sort(sampledData, new Comparator<T>() { //这里进行了排序
 			@Override
 			public int compare(T first, T second) {
 				return comparator.compare(first, second);

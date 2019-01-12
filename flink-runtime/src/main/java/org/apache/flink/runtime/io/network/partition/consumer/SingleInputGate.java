@@ -648,7 +648,7 @@ public class SingleInputGate implements InputGate {
 		final int consumedSubpartitionIndex = igdd.getConsumedSubpartitionIndex();
 		checkArgument(consumedSubpartitionIndex >= 0);
 
-		final InputChannelDeploymentDescriptor[] icdd = checkNotNull(igdd.getInputChannelDeploymentDescriptors());
+		final InputChannelDeploymentDescriptor[] icdd = checkNotNull(igdd.getInputChannelDeploymentDescriptors());//InputChannel对应每个subPartition
 
 		final SingleInputGate inputGate = new SingleInputGate(
 			owningTaskName, jobId, consumedResultId, consumedPartitionType, consumedSubpartitionIndex,
