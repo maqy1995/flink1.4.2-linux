@@ -277,7 +277,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	/** maqy add
 	 *  the source operator's prefer Location, is usually get through HDFS block information */
-	private Collection<TaskManagerLocation> preferredSourceLocations;
+	private ArrayList<TaskManagerLocation> preferredSourceLocations;
 
 	// ------ Fields that are only relevant for archived execution graphs ------------
 	private String jsonPlan;
@@ -1784,7 +1784,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 				}
 			}
 			// 对preferredSourceLocations排序
-			Collections.sort((ArrayList)preferredSourceLocations,new PreferredSourceLocationsComparator());
+			Collections.sort(preferredSourceLocations,new PreferredSourceLocationsComparator());
 		}
 	}
 

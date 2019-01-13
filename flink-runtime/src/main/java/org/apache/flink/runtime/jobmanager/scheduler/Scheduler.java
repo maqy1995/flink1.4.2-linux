@@ -175,7 +175,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 									preferredLocations != null && preferredLocations.iterator().hasNext();
 	
 		synchronized (globalLock) {
-			
+			// 即使来的是Source节点，SlotSharingGroup也存在了
 			SlotSharingGroup sharingUnit = task.getSlotSharingGroup();
 			
 			if (sharingUnit != null) { //如果有slotSharingGroup的话
@@ -186,7 +186,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 					throw new IllegalArgumentException(
 							"A task with a vertex sharing group was scheduled in a queued fashion.");
 				}
-				
+				// source节点来时，assignment中 allSlots数目是0
 				final SlotSharingGroupAssignment assignment = sharingUnit.getTaskAssignment();
 				final CoLocationConstraint constraint = task.getLocationConstraint();
 				
@@ -198,7 +198,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 				
 				// get a slot from the group, if the group has one for us (and can fulfill the constraint)
 				final SimpleSlot slotFromGroup;
-				if (constraint == null) {
+				if (constraint == null) {//source节点的时候得到的slotFromGroup是null
 					slotFromGroup = assignment.getSlotForTask(vertex.getJobvertexId(), preferredLocations);
 				}
 				else {
@@ -365,7 +365,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 			try {
 				SimpleSlot slot = instanceToUse.allocateSimpleSlot(vertex.getJobId());
 				
-				// if the instance has further available slots, re-add it to the set of available resources.
+				// if the instance has further available slots, re-add it to the set of available resources.如果还有资源，将remove的重新加回来
 				if (instanceToUse.hasResourcesAvailable()) {
 					this.instancesWithAvailableResources.put(instanceToUse.getTaskManagerID(), instanceToUse);
 				}
@@ -470,7 +470,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 	 * @param localOnly Flag to indicate whether only one of the exact local instances can be chosen.  
 	 */
 	private Pair<Instance, Locality> findInstance(Iterable<TaskManagerLocation> requestedLocations, boolean localOnly) {
-		
+		// 看起来是将 新来的或者说 重新有资源了的Instance 加入到instancesWithAvailableResources中
 		// drain the queue of newly available instances
 		while (this.newlyAvailableInstances.size() > 0) {
 			Instance queuedInstance = this.newlyAvailableInstances.poll();
@@ -478,7 +478,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 				this.instancesWithAvailableResources.put(queuedInstance.getTaskManagerID(), queuedInstance);
 			}
 		}
-		
+		// 如果没有可用资源了，则返回NULL
 		// if nothing is available at all, return null
 		if (this.instancesWithAvailableResources.isEmpty()) {
 			return null;
@@ -491,7 +491,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 
 			while (locations.hasNext()) {
 				TaskManagerLocation location = locations.next();
-				if (location != null) {
+				if (location != null) {//这里remove掉了，后面会加以判断，如果还有资源还会加进来
 					Instance instance = instancesWithAvailableResources.remove(location.getResourceID());
 					if (instance != null) {
 						return new ImmutablePair<Instance, Locality>(instance, Locality.LOCAL);
@@ -504,7 +504,7 @@ public class Scheduler implements InstanceListener, SlotAvailabilityListener, Sl
 				return null;
 			}
 			else {
-				// take the first instance from the instances with resources
+				// take the first instance from the instances with resources  得不到requestedLocations，则随便得到一个
 				Iterator<Instance> instances = instancesWithAvailableResources.values().iterator();
 				Instance instanceToUse = instances.next();
 				instances.remove();
