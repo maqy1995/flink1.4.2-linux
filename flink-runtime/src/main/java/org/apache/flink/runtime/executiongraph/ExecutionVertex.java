@@ -55,15 +55,7 @@ import org.apache.flink.util.SerializedValue;
 import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
@@ -498,11 +490,14 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 			return Collections.emptySet();
 		}
 		else {
-			Set<CompletableFuture<TaskManagerLocation>> locations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //现在的分布？
-			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //输入的分布
+			//原来此处是HashSet，为了保证顺序，修改为LinkedHashSet,注意，现在没有考虑多source的情况。
+			Set<CompletableFuture<TaskManagerLocation>> locationsResult = new LinkedHashSet<>(getTotalNumberOfParallelSubtasks());//设置的有顺序的最后的分布
+			Set<CompletableFuture<TaskManagerLocation>> locations = new LinkedHashSet<>(getTotalNumberOfParallelSubtasks()); //结果分布
+			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new LinkedHashSet<>(getTotalNumberOfParallelSubtasks()); //输入的分布
 
-			// go over all inputs 遍历所有inputs
+			// go over all inputs 遍历所有inputs，如果有多个JobVertex输入的话，就会有多个源
 			for (int i = 0; i < inputEdges.length; i++) {
+				locationsResult.clear();//maqy add
 				inputLocations.clear();
 				ExecutionEdge[] sources = inputEdges[i];
 				if (sources != null) {
@@ -514,21 +509,33 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 						CompletableFuture<TaskManagerLocation> locationFuture = sources[k].getSource().getProducer().getCurrentTaskManagerLocationFuture();
 						// add input location
 						inputLocations.add(locationFuture);
+
+						//maqy add 如果k和ExecutionVertex的subIndex对应的话，加入到locationsResult，保证是首选
+						if(k == this.getParallelSubtaskIndex()){
+							locationsResult.add(locationFuture);
+						}
+
 						// inputs which have too many distinct sources are not considered
 						// 如果某个输入源有太多的节点分布,则不考虑这个输入源的节点位置
 						if (inputLocations.size() > MAX_DISTINCT_LOCATIONS_TO_CONSIDER) {
+							locationsResult.clear();//maqy add
 							inputLocations.clear();
 							break;
 						}
 					}
+					//如果inputLocations不为空，都添加到Result里去
+					if(!inputLocations.isEmpty()){
+						locationsResult.addAll(inputLocations);
+					}
+
 				}
 				// keep the locations of the input with the least preferred locations
 				// 保留具有最少分布位置的输入的位置
 				if (locations.isEmpty() || // nothing assigned yet
-						(!inputLocations.isEmpty() && inputLocations.size() < locations.size())) {
+						(!locationsResult.isEmpty() && locationsResult.size() < locations.size())) {
 					// current input has fewer preferred locations
 					locations.clear();
-					locations.addAll(inputLocations);
+					locations.addAll(locationsResult);
 				}
 			}
 
