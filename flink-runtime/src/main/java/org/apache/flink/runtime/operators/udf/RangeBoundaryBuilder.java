@@ -59,15 +59,15 @@ public class RangeBoundaryBuilder<T> extends RichMapPartitionFunction<T, Object[
 
 
 		int boundarySize = parallelism - 1;
-		Object[][] boundaries = new Object[boundarySize][];
+		Object[][] boundaries = new Object[boundarySize][];//第二维是因为key可能是多维的
 		if (sampledData.size() > 0) {
-			double avgRange = sampledData.size() / (double) parallelism;//计算拆分的段
+			double avgRange = sampledData.size() / (double) parallelism;//计算拆分的段,即每个段有多少元素
 			int numKey = comparator.getFlatComparators().length;
 			for (int i = 1; i < parallelism; i++) {//每个并行度（分区）一个边界值
 				T record = sampledData.get((int) (i * avgRange));//计算得到靠近段尾的采样记录作为边界界定标准
 				Object[] keys = new Object[numKey];
 				comparator.extractKeys(record, keys, 0);
-				boundaries[i-1] = keys;
+				boundaries[i-1] = keys; //考虑一下，如果一个key相同的数据很多，两次的boundaries都相同怎么办呢？估计要看后续的map？
 				System.out.println("maqy add:boundaries["+i+"]:"+keys.toString());
 			}
 		}

@@ -35,6 +35,7 @@ import org.apache.flink.optimizer.dataproperties.GlobalProperties;
 import org.apache.flink.optimizer.dataproperties.LocalProperties;
 import org.apache.flink.optimizer.plan.IterationPlanNode;
 import org.apache.flink.runtime.io.network.DataExchangeMode;
+import org.apache.flink.runtime.maqy.PercentRangeBoundaryBuilder;
 import org.apache.flink.runtime.operators.udf.AssignRangeIndex;
 import org.apache.flink.runtime.operators.udf.RemoveRangeIndex;
 import org.apache.flink.runtime.operators.udf.RangeBoundaryBuilder;
@@ -189,8 +190,8 @@ public class RangePartitionRewriter implements Visitor<PlanNode> {
 		this.plan.getAllNodes().add(sicPlanNode);
 
 		// 3. Use sampled data to build range boundaries.
-		//RangeBoundaryBuilder实现了RichMapPartitionFunction，用于计算各个分段的界
-		final RangeBoundaryBuilder rangeBoundaryBuilder = new RangeBoundaryBuilder(comparator, targetParallelism);
+		//RangeBoundaryBuilder实现了RichMapPartitionFunction，用于计算各个分段的界    注意这里修改了
+		final PercentRangeBoundaryBuilder rangeBoundaryBuilder = new PercentRangeBoundaryBuilder(comparator, targetParallelism);
 		final TypeInformation<CommonRangeBoundaries> rbTypeInformation = TypeExtractor.getForClass(CommonRangeBoundaries.class);
 		final UnaryOperatorInformation rbOperatorInformation = new UnaryOperatorInformation(sourceOutputType, rbTypeInformation);
 		//MapPartitionOperatorBase是flink-core中的类
