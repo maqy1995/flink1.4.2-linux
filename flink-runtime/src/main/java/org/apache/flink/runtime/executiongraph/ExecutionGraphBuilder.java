@@ -50,6 +50,7 @@ import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
+import org.apache.flink.runtime.maqy.PercentRangeBoundaryBuilder;
 import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.util.DynamicCodeLoadingException;
@@ -102,6 +103,11 @@ public class ExecutionGraphBuilder {
 
 		final FailoverStrategy.Factory failoverStrategy =
 				FailoverStrategyLoader.loadFailoverStrategy(jobManagerConfig, log);
+
+		ArrayList<Integer> arrayList = new ArrayList<>();
+		arrayList.add(90);
+		arrayList.add(10);
+		PercentRangeBoundaryBuilder.setPercentPerChannel(arrayList);
 
 		final JobInformation jobInformation = new JobInformation(
 			jobId,
