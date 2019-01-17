@@ -17,17 +17,21 @@ import java.util.*;
 public class PercentRangeBoundaryBuilder<T> extends RichMapPartitionFunction<T, Object[][]> {
 
 	private int parallelism;
+
 	private final TypeComparatorFactory<T> comparatorFactory;
 
-	private static ArrayList<Integer> percentPerChannel;
+	private static ArrayList<Integer> percentPerChannel = new ArrayList<>();
 
 	public static ArrayList<Integer> getPercentPerChannel() {
 		return percentPerChannel;
 	}
 
 	public static void setPercentPerChannel(ArrayList<Integer> percentPerChannel) {
-		PercentRangeBoundaryBuilder.percentPerChannel = null;
-		PercentRangeBoundaryBuilder.percentPerChannel = new ArrayList(Arrays.asList(percentPerChannel));
+		PercentRangeBoundaryBuilder.percentPerChannel.clear();
+		for(int i : percentPerChannel){
+			PercentRangeBoundaryBuilder.percentPerChannel.add(i);
+		}
+		//PercentRangeBoundaryBuilder.percentPerChannel = new ArrayList(Arrays.asList(percentPerChannel));
 	}
 
 	public PercentRangeBoundaryBuilder(TypeComparatorFactory<T> comparator, int parallelism) {

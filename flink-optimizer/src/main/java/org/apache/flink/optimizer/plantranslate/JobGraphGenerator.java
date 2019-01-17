@@ -191,7 +191,7 @@ public class JobGraphGenerator implements Visitor<PlanNode> {
 		this.sharingGroup = new SlotSharingGroup();
 		
 		// this starts the traversal that generates the job graph
-		program.accept(this);
+		program.accept(this);//从sink往source遍历
 		
 		// sanity check that we are not somehow in an iteration at the end
 		if (this.currentIteration != null) {

@@ -20,6 +20,8 @@ package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
+import org.apache.flink.api.common.operators.util.UserCodeWrapper;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
@@ -51,6 +53,7 @@ import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
 import org.apache.flink.runtime.jobgraph.tasks.JobCheckpointingSettings;
 import org.apache.flink.runtime.maqy.PercentRangeBoundaryBuilder;
+import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.util.DynamicCodeLoadingException;
@@ -104,10 +107,10 @@ public class ExecutionGraphBuilder {
 		final FailoverStrategy.Factory failoverStrategy =
 				FailoverStrategyLoader.loadFailoverStrategy(jobManagerConfig, log);
 
-		ArrayList<Integer> arrayList = new ArrayList<>();
-		arrayList.add(90);
-		arrayList.add(10);
-		PercentRangeBoundaryBuilder.setPercentPerChannel(arrayList);
+//		ArrayList<Integer> arrayList = new ArrayList<>();
+//		arrayList.add(90);
+//		arrayList.add(10);
+//		PercentRangeBoundaryBuilder.setPercentPerChannel(arrayList);
 
 		final JobInformation jobInformation = new JobInformation(
 			jobId,
@@ -156,6 +159,31 @@ public class ExecutionGraphBuilder {
 
 		final long initMasterStart = System.nanoTime();
 		log.info("Running initialization on master for job {} ({}).", jobName, jobId);
+
+		//maqy add
+		for(JobVertex vertex : jobGraph.getVertices()){
+			if(vertex.getName().equals("RangePartition: Histogram")){
+				//Configuration configuration=vertex.getConfiguration();
+				TaskConfig taskConfig = new TaskConfig(vertex.getConfiguration());
+				UserCodeWrapper<PercentRangeBoundaryBuilder> userCodeWrapper = taskConfig.getStubWrapper(classLoader);
+				//getUserCodeObject()返回的用final修饰了，不能修改
+				PercentRangeBoundaryBuilder percentRangeBoundaryBuilder=userCodeWrapper.getUserCodeObject();
+				if(percentRangeBoundaryBuilder.getPercentPerChannel() == null){
+					System.out.println("getPercentPerChannel is null");
+				}
+				ArrayList<Integer> arrayList = new ArrayList<Integer>();
+				arrayList.add(90);
+				arrayList.add(10);
+				percentRangeBoundaryBuilder.setPercentPerChannel(arrayList);
+				if(percentRangeBoundaryBuilder.getPercentPerChannel() != null){
+					System.out.println(percentRangeBoundaryBuilder.getPercentPerChannel());
+				}
+				//重新创建一个newUserCodeWrapper
+				UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper=new UserCodeObjectWrapper<PercentRangeBoundaryBuilder>(percentRangeBoundaryBuilder);
+				taskConfig.setStubWrapper(newUserCodeWrapper);
+				System.out.println("xxx");
+			}
+		}
 
 		for (JobVertex vertex : jobGraph.getVertices()) {
 			String executableClass = vertex.getInvokableClassName();
