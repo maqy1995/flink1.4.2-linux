@@ -168,9 +168,7 @@ public class ExecutionGraphBuilder {
 				UserCodeWrapper<PercentRangeBoundaryBuilder> userCodeWrapper = taskConfig.getStubWrapper(classLoader);
 				//getUserCodeObject()返回的用final修饰了，不能修改
 				PercentRangeBoundaryBuilder percentRangeBoundaryBuilder=userCodeWrapper.getUserCodeObject();
-				if(percentRangeBoundaryBuilder.getPercentPerChannel() == null){
-					System.out.println("getPercentPerChannel is null");
-				}
+
 				ArrayList<Integer> arrayList = new ArrayList<Integer>();
 				arrayList.add(90);
 				arrayList.add(10);
@@ -179,7 +177,7 @@ public class ExecutionGraphBuilder {
 					System.out.println(percentRangeBoundaryBuilder.getPercentPerChannel());
 				}
 				//重新创建一个newUserCodeWrapper
-				UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper=new UserCodeObjectWrapper<PercentRangeBoundaryBuilder>(percentRangeBoundaryBuilder);
+				UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper=new UserCodeObjectWrapper(percentRangeBoundaryBuilder);
 				taskConfig.setStubWrapper(newUserCodeWrapper);
 				System.out.println("xxx");
 			}

@@ -20,16 +20,16 @@ public class PercentRangeBoundaryBuilder<T> extends RichMapPartitionFunction<T, 
 
 	private final TypeComparatorFactory<T> comparatorFactory;
 
-	private static ArrayList<Integer> percentPerChannel = new ArrayList<>();
+	private ArrayList<Integer> percentPerChannel = new ArrayList<>();//这里还需要static么？？？？
 
-	public static ArrayList<Integer> getPercentPerChannel() {
-		return percentPerChannel;
+	public ArrayList<Integer> getPercentPerChannel() {
+		return this.percentPerChannel;
 	}
 
-	public static void setPercentPerChannel(ArrayList<Integer> percentPerChannel) {
-		PercentRangeBoundaryBuilder.percentPerChannel.clear();
+	public void setPercentPerChannel(ArrayList<Integer> percentPerChannel) {
+		this.getPercentPerChannel().clear();
 		for(int i : percentPerChannel){
-			PercentRangeBoundaryBuilder.percentPerChannel.add(i);
+			this.getPercentPerChannel().add(i);
 		}
 		//PercentRangeBoundaryBuilder.percentPerChannel = new ArrayList(Arrays.asList(percentPerChannel));
 	}
