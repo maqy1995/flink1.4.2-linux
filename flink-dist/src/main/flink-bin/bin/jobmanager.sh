@@ -17,6 +17,8 @@
 # limitations under the License.
 ################################################################################
 
+export JVM_ARGS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"
+
 # Start/stop a Flink JobManager.
 USAGE="Usage: jobmanager.sh ((start|start-foreground) (local|cluster|flip6) [host] [webui-port])|stop|stop-all [flip6]"
 

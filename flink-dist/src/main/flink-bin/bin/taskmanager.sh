@@ -17,6 +17,8 @@
 # limitations under the License.
 ################################################################################
 
+export JVM_ARGS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5006"
+
 # Start/stop a Flink TaskManager.
 USAGE="Usage: taskmanager.sh (start|start-foreground|stop|stop-all) [flip6]"
 
