@@ -45,6 +45,28 @@ public class TaskManagerLocation implements Comparable<TaskManagerLocation>, jav
 
 	// ------------------------------------------------------------------------
 
+	/** maqy add */
+	private int uplinkBandwidth = -1;
+
+	/** maqy add */
+	private int downlinkBandwidth = -1;
+
+	public int getUplinkBandwidth() {
+		return uplinkBandwidth;
+	}
+
+	public void setUplinkBandwidth(int uplinkBandwidth) {
+		this.uplinkBandwidth = uplinkBandwidth;
+	}
+
+	public int getDownlinkBandwidth() {
+		return downlinkBandwidth;
+	}
+
+	public void setDownlinkBandwidth(int downlinkBandwidth) {
+		this.downlinkBandwidth = downlinkBandwidth;
+	}
+
 	/** The ID of the resource in which the TaskManager is started. This can be for example
 	 * the YARN container ID, Mesos container ID, or any other unique identifier. */
 	private final ResourceID resourceID;

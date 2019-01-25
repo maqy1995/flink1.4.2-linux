@@ -56,6 +56,12 @@ public class TaskManagerServicesConfiguration {
 
 	private final int numberOfSlots;
 
+	//maqy add
+	private int uplinkBandwidth = -1;
+
+	//maqy add
+	private int downlinkBandwidth = -1;
+
 	private final NetworkEnvironmentConfiguration networkConfig;
 
 	private final QueryableStateConfiguration queryableStateConfig;
@@ -99,9 +105,50 @@ public class TaskManagerServicesConfiguration {
 		this.timerServiceShutdownTimeout = timerServiceShutdownTimeout;
 	}
 
+	// maqy add
+	public TaskManagerServicesConfiguration(
+		InetAddress taskManagerAddress,
+		String[] tmpDirPaths,
+		NetworkEnvironmentConfiguration networkConfig,
+		QueryableStateConfiguration queryableStateConfig,
+		int numberOfSlots,
+		int uplinkBandwidth,
+		int downlinkBandwidth,
+		long configuredMemory,
+		boolean preAllocateMemory,
+		float memoryFraction,
+		long timerServiceShutdownTimeout) {
+
+		this.taskManagerAddress = checkNotNull(taskManagerAddress);
+		this.tmpDirPaths = checkNotNull(tmpDirPaths);
+		this.networkConfig = checkNotNull(networkConfig);
+		this.queryableStateConfig = checkNotNull(queryableStateConfig);
+		this.numberOfSlots = checkNotNull(numberOfSlots);
+		this.uplinkBandwidth = checkNotNull(uplinkBandwidth);
+		this.downlinkBandwidth = checkNotNull(downlinkBandwidth);
+
+		this.configuredMemory = configuredMemory;
+		this.preAllocateMemory = preAllocateMemory;
+		this.memoryFraction = memoryFraction;
+
+		checkArgument(timerServiceShutdownTimeout >= 0L, "The timer " +
+			"service shutdown timeout must be greater or equal to 0.");
+		this.timerServiceShutdownTimeout = timerServiceShutdownTimeout;
+	}
+
 	// --------------------------------------------------------------------------------------------
 	//  Getter/Setter
 	// --------------------------------------------------------------------------------------------
+
+	//maqy add
+	public int getUplinkBandwidth() {
+		return uplinkBandwidth;
+	}
+
+	//maqy add
+	public int getDownlinkBandwidth() {
+		return downlinkBandwidth;
+	}
 
 	public InetAddress getTaskManagerAddress() {
 		return taskManagerAddress;
@@ -203,16 +250,42 @@ public class TaskManagerServicesConfiguration {
 
 		long timerServiceShutdownTimeout = AkkaUtils.getTimeout(configuration).toMillis();
 
-		return new TaskManagerServicesConfiguration(
-			remoteAddress,
-			tmpDirs,
-			networkConfig,
-			queryableStateConfig,
-			slots,
-			configuredMemory,
-			preAllocateMemory,
-			memoryFraction,
-			timerServiceShutdownTimeout);
+		int uplinkBandwidth = configuration.getInteger(ConfigConstants.UPLINK_BANDWIDTH, -1);
+		int downlinkBandwidth = configuration.getInteger(ConfigConstants.DOWNLINK_BANDWIDTH, -1);
+		//防止用户乱写，写了小于0的数
+		if (uplinkBandwidth < 0) {
+			uplinkBandwidth = -1;
+		}
+		if (downlinkBandwidth < 0) {
+			downlinkBandwidth = -1;
+		}
+
+		if(uplinkBandwidth == -1 || downlinkBandwidth == -1){
+			return new TaskManagerServicesConfiguration(
+				remoteAddress,
+				tmpDirs,
+				networkConfig,
+				queryableStateConfig,
+				slots,
+				configuredMemory,
+				preAllocateMemory,
+				memoryFraction,
+				timerServiceShutdownTimeout);
+		}else {
+			return new TaskManagerServicesConfiguration(
+				remoteAddress,
+				tmpDirs,
+				networkConfig,
+				queryableStateConfig,
+				slots,
+				uplinkBandwidth,
+				downlinkBandwidth,
+				configuredMemory,
+				preAllocateMemory,
+				memoryFraction,
+				timerServiceShutdownTimeout);
+		}
+
 	}
 
 	// --------------------------------------------------------------------------

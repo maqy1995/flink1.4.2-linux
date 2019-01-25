@@ -21,6 +21,10 @@
 # Common
 #==============================================================================
 
+#maqy add
+uplink.bandwidth: -1
+downlink.bandwidth: -1
+
 # The external address of the host on which the JobManager runs and can be
 # reached by the TaskManagers and any clients which want to connect. This setting
 # is only used in Standalone mode and may be overwritten on the JobManager side

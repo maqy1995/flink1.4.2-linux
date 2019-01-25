@@ -164,6 +164,12 @@ public class TaskManagerServices {
 			taskManagerServicesConfiguration.getTaskManagerAddress(),
 			network.getConnectionManager().getDataPort());
 
+		//maqy add
+		if(taskManagerServicesConfiguration.getUplinkBandwidth() != -1 && taskManagerServicesConfiguration.getDownlinkBandwidth() != -1){
+			taskManagerLocation.setUplinkBandwidth(taskManagerServicesConfiguration.getUplinkBandwidth());
+			taskManagerLocation.setDownlinkBandwidth(taskManagerServicesConfiguration.getDownlinkBandwidth());
+		}
+
 		// this call has to happen strictly after the network stack has been initialized
 		final MemoryManager memoryManager = createMemoryManager(taskManagerServicesConfiguration);
 
