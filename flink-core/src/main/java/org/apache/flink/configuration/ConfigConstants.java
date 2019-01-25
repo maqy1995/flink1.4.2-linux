@@ -40,6 +40,18 @@ public final class ConfigConstants {
 	// ---------------------------- Parallelism -------------------------------
 
 	/**
+	 * maqy add
+	 * The config parameter defining the uplink bandwidth.
+	 */
+	public static final String UPLINK_BANDWIDTH = "uplink.bandwidth";
+
+	/**
+	 * maqy add
+	 * The config parameter defining the downlink bandwidth.
+	 */
+	public static final String DOWNLINK_BANDWIDTH = "downlink.bandwidth";
+
+	/**
 	 * The config parameter defining the default parallelism for jobs.
 	 */
 	public static final String DEFAULT_PARALLELISM_KEY = "parallelism.default";
