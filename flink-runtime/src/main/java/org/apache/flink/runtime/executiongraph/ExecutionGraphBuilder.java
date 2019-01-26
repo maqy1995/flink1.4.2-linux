@@ -160,28 +160,6 @@ public class ExecutionGraphBuilder {
 		final long initMasterStart = System.nanoTime();
 		log.info("Running initialization on master for job {} ({}).", jobName, jobId);
 
-		//maqy add
-		for(JobVertex vertex : jobGraph.getVertices()){
-			if(vertex.getName().equals("RangePartition: Histogram")){
-				//Configuration configuration=vertex.getConfiguration();
-				TaskConfig taskConfig = new TaskConfig(vertex.getConfiguration());
-				UserCodeWrapper<PercentRangeBoundaryBuilder> userCodeWrapper = taskConfig.getStubWrapper(classLoader);
-				//getUserCodeObject()返回的用final修饰了，不能修改
-				PercentRangeBoundaryBuilder percentRangeBoundaryBuilder=userCodeWrapper.getUserCodeObject();
-
-				ArrayList<Integer> arrayList = new ArrayList<Integer>();
-				arrayList.add(90);
-				arrayList.add(10);
-				percentRangeBoundaryBuilder.setPercentPerChannel(arrayList);
-				if(percentRangeBoundaryBuilder.getPercentPerChannel() != null){
-					System.out.println(percentRangeBoundaryBuilder.getPercentPerChannel());
-				}
-				//重新创建一个newUserCodeWrapper
-				UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper=new UserCodeObjectWrapper(percentRangeBoundaryBuilder);
-				taskConfig.setStubWrapper(newUserCodeWrapper);
-				System.out.println("xxx");
-			}
-		}
 
 		for (JobVertex vertex : jobGraph.getVertices()) {
 			String executableClass = vertex.getInvokableClassName();
@@ -195,7 +173,7 @@ public class ExecutionGraphBuilder {
 			}
 
 			try {
-				vertex.initializeOnMaster(classLoader);
+				vertex.initializeOnMaster(classLoader);  //source节点和sink节点会有这个
 			}
 			catch (Throwable t) {
 					throw new JobExecutionException(jobId,

@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.executiongraph;
 
+import gurobi.GRBException;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.Archiveable;
 import org.apache.flink.api.common.ArchivedExecutionConfig;
@@ -25,6 +26,8 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
+import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
+import org.apache.flink.api.common.operators.util.UserCodeWrapper;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.JobException;
@@ -64,7 +67,11 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
+import org.apache.flink.runtime.maqy.LPUtil;
+import org.apache.flink.runtime.maqy.LocationInfo;
+import org.apache.flink.runtime.maqy.PercentRangeBoundaryBuilder;
 import org.apache.flink.runtime.maqy.PreferredSourceLocationsComparator;
+import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateBackend;
@@ -799,6 +806,75 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 		final ArrayList<ExecutionJobVertex> newExecJobVertices = new ArrayList<>(topologiallySorted.size());
 		final long createTimestamp = System.currentTimeMillis();
 
+		//maqy add 用于优化的
+		for(JobVertex jobVertex : topologiallySorted){
+			//maqy add  如果是输入节点，则对PreferredSourceLocation初始化
+			//to do : 后续这里需要读取source的信息，比如HDFS的分块位置等，还需要考虑多个源，还需要考虑reduce任务并行度不一致
+			//注意：topologiallySorted中的JobVertex中一定是Source节点在前面
+			if(jobVertex.isInputVertex()){
+				//maqy add  初始化源数据所在节点信息
+				this.setPreferredSourceLocations();
+			}
+
+			//如果是Histogram，则可以修改其中的MapFunction
+			if(jobVertex.getName().equals("RangePartition: Histogram")){
+				//1.获得PreferredSourceLocations的List
+				Collection<TaskManagerLocation> preferredSourceLocations = this.getPreferredSourceLocations();
+				//判断带宽信息对不对，如果不对则不修改：
+				if(this.IsBandWidthInfoCorrect(preferredSourceLocations)){
+					//2.根据PreferredSourceLocations得到计算各个比例的List
+					if(preferredSourceLocations != null || !preferredSourceLocations.isEmpty()){ //先判断preferredSourceLocations是否为空
+						//2.1先通过PreferredSourceLocations得到LocationInfo[]数组
+						LocationInfo[] locationInfos = new LocationInfo[preferredSourceLocations.size()];
+						int i=0;
+						//初始化每个locationInfo信息
+						for(TaskManagerLocation tml : preferredSourceLocations){
+							locationInfos[i] = new LocationInfo(
+								tml.getHostname(), tml.addressString(), tml.getUplinkBandwidth(), tml.getDownlinkBandwidth());
+							++i;
+						}
+						//2.2通过LocationInfo[]数组计算各个Instance的比例
+						try {
+							new LPUtil().getLocationProportion(locationInfos);
+						} catch (GRBException e) {
+							e.printStackTrace();
+						}
+
+						//3.计算完比例后，得到一个用于写入UDF的list
+
+						//得到比例数组
+						ArrayList<Integer> proportions = new ArrayList<Integer>();
+						for(i = 0; i < locationInfos.length; ++i){
+							int proportion = locationInfos[i].getProportion();
+							if(proportion > 100 || proportion < 0){
+								//throw new Exception("");
+								System.out.println("proportion is incorrect");
+							}
+							proportions.add(proportion);
+						}
+						//以下逻辑用于修改MapFunction的UDF
+						//Configuration configuration=vertex.getConfiguration();
+						TaskConfig taskConfig = new TaskConfig(jobVertex.getConfiguration());
+						UserCodeWrapper<PercentRangeBoundaryBuilder> userCodeWrapper = taskConfig.getStubWrapper(userClassLoader);
+						//getUserCodeObject()返回的用final修饰了，不能修改
+						PercentRangeBoundaryBuilder percentRangeBoundaryBuilder=userCodeWrapper.getUserCodeObject();
+
+//					ArrayList<Integer> arrayList = new ArrayList<Integer>();
+//					arrayList.add(90);
+//					arrayList.add(10);
+						percentRangeBoundaryBuilder.setPercentPerChannel(proportions);
+						if(percentRangeBoundaryBuilder.getPercentPerChannel() != null){
+							System.out.println(percentRangeBoundaryBuilder.getPercentPerChannel());
+						}
+						//重新创建一个newUserCodeWrapper
+						UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper=new UserCodeObjectWrapper(percentRangeBoundaryBuilder);
+						taskConfig.setStubWrapper(newUserCodeWrapper);
+						System.out.println("修改了比例");
+					}
+				}
+			}
+		}
+
 		//依次顺序遍历排好序的JobVertex集合
 		for (JobVertex jobVertex : topologiallySorted) {
 
@@ -879,9 +955,6 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 
 	private void scheduleLazy(SlotProvider slotProvider) {
 		// simply take the vertices without inputs.
-
-		//maqy add  初始化源数据所在节点信息
-		this.setPreferredSourceLocations();
 
 		for (ExecutionJobVertex ejv : verticesInCreationOrder) {
 			if (ejv.getJobVertex().isInputVertex()) { //如果是源节点，则进行调度
@@ -1791,8 +1864,19 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** maqy add
 	 * get preferedSourceLocation
 	 */
-
 	public Collection<TaskManagerLocation> getPreferredSourceLocations(){
 		return this.preferredSourceLocations;
+	}
+
+	/** maqy add
+	 * get preferedSourceLocation
+	 */
+	public boolean IsBandWidthInfoCorrect(Collection<TaskManagerLocation> taskManagerLocations){
+		for(TaskManagerLocation taskManagerLocation : taskManagerLocations){
+			if(taskManagerLocation.getUplinkBandwidth() == -1 || taskManagerLocation.getDownlinkBandwidth() == -1){
+				return false;
+			}
+		}
+		return true;
 	}
 }
