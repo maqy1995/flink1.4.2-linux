@@ -42,6 +42,7 @@ import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
 import org.apache.flink.runtime.io.network.partition.consumer.UnionInputGate;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.maqy.BoundaryPartitioner;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.operators.chaining.ChainedDriver;
@@ -252,7 +253,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 		initInputReaders();
 		initBroadcastInputReaders();
 
-		// initialize the writers.
+		// initialize the writers.   maqy
 		initOutputs();
 
 		if (LOG.isDebugEnabled()) {
@@ -351,6 +352,17 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 				readAndSetBroadcastInput(i, name, this.runtimeUdfContext, 1 /* superstep one for the start */);
 			}
 
+			//maqy add
+			if(headName.equals("RangePartition: PreparePartition")){
+				//如果是PreparePartition节点则根据广播来的数据界限重新初始化output
+				List<Object> broadcastVariable = runtimeUdfContext.getBroadcastVariable("RangeBoundaries");
+				if (broadcastVariable == null || broadcastVariable.size() != 1) {
+					throw new RuntimeException("AssignRangePartition require a single RangeBoundaries as broadcast input.");
+				}
+				Object[][] boundaryObjects = (Object[][]) broadcastVariable.get(0);
+				//这里是可以确定广播变量只有一个的，因为该算子和其的输入输出边都是我自己构造的
+				initOutputsWithBoundary(boundaryObjects);
+			}
 			// the work goes here
 			run();
 		}
@@ -429,7 +441,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 		final TypeSerializerFactory<X> serializerFactory =  (TypeSerializerFactory<X>) this.broadcastInputSerializers[inputNum];
 		
 		final MutableReader<?> reader = this.broadcastInputReaders[inputNum];
-
+		//这里得到了broadcastVariable
 		BroadcastVariableMaterialization<X, ?> variable = getEnvironment().getBroadcastVariableManager().materializeBroadcastVariable(bcVarName, superstep, this, reader, serializerFactory);
 		context.setBroadcastVariable(bcVarName, variable);
 	}
@@ -1016,6 +1028,130 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 				this.getExecutionConfig(), this.accumulatorMap);
 	}
 
+	//maqy add
+	protected void initOutputsWithBoundary(Object[][] boundaryObjects) throws Exception {
+		this.chainedTasks = new ArrayList<ChainedDriver<?, ?>>();
+		this.eventualOutputs = new ArrayList<RecordWriter<?>>();//注意这里有RecordWriter
+
+		ClassLoader userCodeClassLoader = getUserCodeClassLoader();
+
+		this.accumulatorMap = getEnvironment().getAccumulatorRegistry().getUserMap();
+
+		this.output = initOutputsWithBoundary(this, userCodeClassLoader, this.config, this.chainedTasks, this.eventualOutputs,
+			this.getExecutionConfig(), this.accumulatorMap, boundaryObjects);
+	}
+
+	//maqy add
+	public static <T> Collector<T> initOutputsWithBoundary(AbstractInvokable containingTask, ClassLoader cl, TaskConfig config,
+											   List<ChainedDriver<?, ?>> chainedTasksTarget,
+											   List<RecordWriter<?>> eventualOutputs,
+											   ExecutionConfig executionConfig,
+											   Map<String, Accumulator<?,?>> accumulatorMap, Object[][] boundaryObjects)
+		throws Exception {
+		final int numOutputs = config.getNumOutputs();
+
+		// check whether we got any chained tasks
+		final int numChained = config.getNumberOfChainedStubs();
+		if (numChained > 0) {
+			// got chained stubs. that means that this one may only have a single forward connection
+			if (numOutputs != 1 || config.getOutputShipStrategy(0) != ShipStrategyType.FORWARD) {
+				throw new RuntimeException("Plan Generation Bug: Found a chained stub that is not connected via an only forward connection.");
+			}
+
+			// instantiate each task
+			@SuppressWarnings("rawtypes")
+			Collector previous = null;
+			for (int i = numChained - 1; i >= 0; --i)
+			{
+				// get the task first
+				final ChainedDriver<?, ?> ct;
+				try {
+					Class<? extends ChainedDriver<?, ?>> ctc = config.getChainedTask(i);
+					ct = ctc.newInstance();
+				}
+				catch (Exception ex) {
+					throw new RuntimeException("Could not instantiate chained task driver.", ex);
+				}
+
+				// get the configuration for the task
+				final TaskConfig chainedStubConf = config.getChainedStubConfig(i);
+				final String taskName = config.getChainedTaskName(i);
+
+				if (i == numChained - 1) {
+					// last in chain, instantiate the output collector for this task
+					previous = getOutputCollectorWithBoundary(containingTask, chainedStubConf, cl, eventualOutputs, 0, chainedStubConf.getNumOutputs(), boundaryObjects);
+				}
+
+				ct.setup(chainedStubConf, taskName, previous, containingTask, cl, executionConfig, accumulatorMap);
+				chainedTasksTarget.add(0, ct);
+
+				if (i == numChained - 1) {
+					ct.getIOMetrics().reuseOutputMetricsForTask();
+				}
+
+				previous = ct;
+			}
+			// the collector of the first in the chain is the collector for the task
+			return (Collector<T>) previous;
+		}
+		// else
+
+		// instantiate the output collector the default way from this configuration
+		return getOutputCollectorWithBoundary(containingTask , config, cl, eventualOutputs, 0, numOutputs, boundaryObjects);
+	}
+
+	//maqy add
+	public static <T> Collector<T> getOutputCollectorWithBoundary(AbstractInvokable task, TaskConfig config, ClassLoader cl,
+													  List<RecordWriter<?>> eventualOutputs, int outputOffset, int numOutputs, Object[][] boundaryObjects) throws Exception
+	{
+		if (numOutputs == 0) {
+			return null;
+		}
+
+		// get the factory for the serializer
+		final TypeSerializerFactory<T> serializerFactory = config.getOutputSerializer(cl);
+		final List<RecordWriter<SerializationDelegate<T>>> writers = new ArrayList<>(numOutputs);
+
+		// create a writer for each output
+		for (int i = 0; i < numOutputs; i++)
+		{
+			// create the OutputEmitter from output ship strategy
+			final ShipStrategyType strategy = config.getOutputShipStrategy(i);
+			final int indexInSubtaskGroup = task.getIndexInSubtaskGroup();
+			final TypeComparatorFactory<T> compFactory = config.getOutputComparator(i, cl);
+
+			final ChannelSelector<SerializationDelegate<T>> oe;
+			if (compFactory == null) {
+				oe = new OutputEmitter<T>(strategy, indexInSubtaskGroup);
+			}
+			else {
+				final DataDistribution dataDist = config.getOutputDataDistribution(i, cl);
+				final Partitioner<?> partitioner = config.getOutputPartitioner(i, cl);
+
+				if(partitioner instanceof BoundaryPartitioner){
+					if(boundaryObjects == null){
+						throw new RuntimeException("boundaryObjects is null!");
+					}
+					((BoundaryPartitioner<?>) partitioner).setBoundaries(boundaryObjects);
+				}
+
+				final TypeComparator<T> comparator = compFactory.createComparator();
+				oe = new OutputEmitter<T>(strategy, indexInSubtaskGroup, comparator, partitioner, dataDist);
+			}
+
+			final RecordWriter<SerializationDelegate<T>> recordWriter =
+				new RecordWriter<SerializationDelegate<T>>(task.getEnvironment().getWriter(outputOffset + i), oe);
+
+			recordWriter.setMetricGroup(task.getEnvironment().getMetricGroup().getIOMetricGroup());
+
+			writers.add(recordWriter);
+		}
+		if (eventualOutputs != null) {
+			eventualOutputs.addAll(writers);
+		}
+		return new OutputCollector<T>(writers, serializerFactory.getSerializer());
+	}
+
 	public DistributedRuntimeUDFContext createRuntimeContext(MetricGroup metrics) {
 		Environment env = getEnvironment();
 
@@ -1191,6 +1327,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 	// --------------------------------------------------------------------------------------------
 	//                             Result Shipping and Chained Tasks
 	// --------------------------------------------------------------------------------------------
+
 
 	/**
 	 * Creates the {@link Collector} for the given task, as described by the given configuration. The

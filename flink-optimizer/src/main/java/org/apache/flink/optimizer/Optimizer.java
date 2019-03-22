@@ -23,12 +23,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.optimizer.traversals.BinaryUnionReplacer;
-import org.apache.flink.optimizer.traversals.BranchesVisitor;
-import org.apache.flink.optimizer.traversals.GraphCreatingVisitor;
-import org.apache.flink.optimizer.traversals.IdAndEstimatesVisitor;
-import org.apache.flink.optimizer.traversals.InterestingPropertyVisitor;
-import org.apache.flink.optimizer.traversals.PlanFinalizer;
+import org.apache.flink.optimizer.traversals.*;
 import org.apache.flink.api.common.ExecutionMode;
 import org.apache.flink.api.common.Plan;
 import org.apache.flink.optimizer.costs.CostEstimator;
@@ -42,7 +37,6 @@ import org.apache.flink.optimizer.plan.SinkJoinerPlanNode;
 import org.apache.flink.optimizer.plan.SinkPlanNode;
 import org.apache.flink.optimizer.postpass.OptimizerPostPass;
 import org.apache.flink.configuration.ConfigConstants;
-import org.apache.flink.optimizer.traversals.RangePartitionRewriter;
 import org.apache.flink.util.InstantiationUtil;
 
 import org.slf4j.Logger;
@@ -516,7 +510,9 @@ public class Optimizer {
 		
 		plan.accept(new BinaryUnionReplacer());
 
-		plan.accept(new RangePartitionRewriter(plan));
+		//plan.accept(new RangePartitionRewriter(plan));
+		//maqy add
+		plan.accept(new BandwidthRewriter(plan));
 
 		// post pass the plan. this is the phase where the serialization and comparator code is set
 		postPasser.postPass(plan);
