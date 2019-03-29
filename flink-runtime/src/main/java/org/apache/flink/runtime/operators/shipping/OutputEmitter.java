@@ -21,9 +21,13 @@ package org.apache.flink.runtime.operators.shipping;
 import org.apache.flink.api.common.distributions.DataDistribution;
 import org.apache.flink.api.common.functions.Partitioner;
 import org.apache.flink.api.common.typeutils.TypeComparator;
+import org.apache.flink.api.java.typeutils.runtime.TupleComparator;
 import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.MathUtils;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * The output emitter decides to which of the possibly multiple output channels a record is sent.
@@ -235,16 +239,32 @@ public class OutputEmitter<T> implements ChannelSelector<SerializationDelegate<T
 	}
 
 	private int[] customPartition(T record, int numberOfChannels) {
+		int keysLength=1;
 		if (channels == null) {
 			channels = new int[1];
 			extractedKeys = new Object[1];
 		}
+		//maqy add
 
+		if(comparator instanceof TupleComparator){
+			if(comparator.getFlatComparators().length!=1){
+				extractedKeys = new Object[comparator.getFlatComparators().length];
+				keysLength=comparator.getFlatComparators().length;
+			}
+		}
 		try {
-			if (comparator.extractKeys(record, extractedKeys, 0) == 1) {
-				final Object key = extractedKeys[0];
-				channels[0] = partitioner.partition(key, numberOfChannels);
-				return channels;
+			if (comparator.extractKeys(record, extractedKeys, 0) == keysLength) {
+				//final Object key = extractedKeys[0];
+				if(keysLength==1){
+					final Object key = extractedKeys[0];
+					channels[0] = partitioner.partition(key, numberOfChannels);
+					return channels;
+				}else {
+					final List<Object> keys = Arrays.asList(extractedKeys);
+					channels[0] = partitioner.partition(keys, numberOfChannels);
+					return channels;
+				}
+
 			}
 			else {
 				throw new RuntimeException("Inconsistency in the key comparator - comparator extracted more than one field.");
