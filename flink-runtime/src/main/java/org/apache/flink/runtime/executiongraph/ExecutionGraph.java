@@ -833,9 +833,11 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 						}
 					}catch (IOException e) {
 						e.printStackTrace();
+						throw new JobException("HDFS文件不存在");
 					}
 				}else {
-					//不为空说明有两个source，则不能用这个。
+					//不为空说明有两个source，则不能用这个。这里是不是要重新设置回null呢？
+					this.setPreferredSourceLocations(null,0);
 					break;
 				}
 			}
@@ -869,6 +871,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 							new LPUtil().getLocationProportion(locationInfos);
 						} catch (GRBException e) {
 							e.printStackTrace();
+							throw new JobException("LP计算出现错误");
 						}
 
 						//3.计算完比例后，得到一个用于写入UDF的list
@@ -1868,6 +1871,10 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * set preferedSourceLocation  Collection<TaskManagerLocation> preferedSourceLocation
 	 */
 	public void setPreferredSourceLocations(HashMap<String, Long> blocksizePerHostname, int parallelism){
+		if(blocksizePerHostname == null || blocksizePerHostname.isEmpty() || parallelism <= 0) {
+			this.preferredSourceLocations = null;
+			return;
+		}
 		//先要把blocksizePerHostname按key排序，然后加入到preferredSourceLocations中，
 		//并且注意并行度和blocksizePerHostname不同时候的处理
 		List<Map.Entry<String, Long>> blocksizePerHostnameList = new ArrayList<Map.Entry<String, Long>>();
