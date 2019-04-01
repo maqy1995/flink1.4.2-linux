@@ -353,7 +353,7 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 			}
 
 			//maqy add
-			if(headName.equals("BandwidthPartition: Histogram")){
+			if(headName.equals("BandwidthPartition: PreparePartition")){
 				//如果是PreparePartition节点则根据广播来的数据界限重新初始化output
 				List<Object> broadcastVariable = runtimeUdfContext.getBroadcastVariable("RangeBoundaries");
 				if (broadcastVariable == null || broadcastVariable.size() != 1) {

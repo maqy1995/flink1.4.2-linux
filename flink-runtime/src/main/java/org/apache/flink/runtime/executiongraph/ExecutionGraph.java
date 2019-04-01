@@ -1897,6 +1897,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 						if(entry.getKey().equals(hostAndSize.getKey())){
 							List<Instance> instances = entry.getValue();
 							preferredSourceLocations.add(instances.get(0).getTaskManagerLocation());
+							break;
 						}
 					}
 				}else {
