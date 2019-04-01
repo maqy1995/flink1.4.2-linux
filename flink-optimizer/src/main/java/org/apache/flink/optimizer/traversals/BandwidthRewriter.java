@@ -57,14 +57,13 @@ import java.util.Set;
 public class BandwidthRewriter implements Visitor<PlanNode> {
 
 	final static long SEED = 0;
-	final static String SIP_NAME = "RangePartition: LocalSample";
-	final static String SIC_NAME = "RangePartition: GlobalSample";
-	final static String RB_NAME = "RangePartition: Histogram";
-	final static String ARI_NAME = "RangePartition: PreparePartition";
-	final static String PR_NAME = "RangePartition: Partition";
+	final static String SIP_NAME = "BandwidthPartition: LocalSample";
+	final static String SIC_NAME = "BandwidthPartition: GlobalSample";
+	final static String RB_NAME = "BandwidthPartition: Histogram";
+	final static String ARI_NAME = "BandwidthPartition: PreparePartition";
+	final static String PR_NAME = "BandwidthPartition: Partition";
 
-	final static int SAMPLES_PER_PARTITION = 1000;
-
+	final static int SAMPLES_PER_PARTITION = 1000; //这里采样数目可以考虑是不是应该修改一下
 
 	final OptimizedPlan plan;
 	final Set<IterationPlanNode> visitedIterationNodes;
@@ -83,7 +82,7 @@ public class BandwidthRewriter implements Visitor<PlanNode> {
 	public void postVisit(PlanNode node) {
 
 		if(node instanceof IterationPlanNode) {
-			System.out.println();
+			System.out.println();//以后要删除
 			IterationPlanNode iNode = (IterationPlanNode)node;
 			if(!visitedIterationNodes.contains(iNode)) {
 				visitedIterationNodes.add(iNode);
@@ -93,7 +92,7 @@ public class BandwidthRewriter implements Visitor<PlanNode> {
 		//提取当前所有的计划节点的输入通道
 		final Iterable<Channel> inputChannels = node.getInputs();
 		for (Channel channel : inputChannels) {//遍历输入通道
-			System.out.println();
+			System.out.println();//以后要删除
 			ShipStrategyType shipStrategy = channel.getShipStrategy();
 			// Make sure we only optimize the DAG for range partition, and do not optimize multi times.
 			if (shipStrategy == ShipStrategyType.PARTITION_RANGE) {// 确保优化的通道的数据传输策略为范围分区
@@ -101,7 +100,7 @@ public class BandwidthRewriter implements Visitor<PlanNode> {
 				if(channel.getDataDistribution() == null) {
 					System.out.println();
 					if (node.isOnDynamicPath()) {
-						throw new InvalidProgramException("Range Partitioning not supported within iterations if users do not supply the data distribution.");
+						throw new InvalidProgramException("Bandwidth Partitioning not supported within iterations if users do not supply the data distribution.");
 					}
 					//对该通道的范围分区进行“重写”，并将当前通道从源计划节点的通道中删除，然后加入新的通道集合
 					PlanNode channelSource = channel.getSource();
@@ -116,7 +115,6 @@ public class BandwidthRewriter implements Visitor<PlanNode> {
 	}
 
 	private List<Channel> rewriteRangePartitionChannel(Channel channel) {
-		System.out.println();
 		//RangePartition前驱Operator的输出？
 		final List<Channel> sourceNewOutputChannels = new ArrayList<>();
 		//sourceNode是RangePartition的前驱Operator
@@ -151,7 +149,7 @@ public class BandwidthRewriter implements Visitor<PlanNode> {
 		sipPlanNode.setParallelism(sourceParallelism);
 		sipPlanNode.initProperties(new GlobalProperties(), new LocalProperties());
 		sipPlanNode.setCosts(defaultZeroCosts);
-		//设置新加的Channel的target节点为新创建的采样MapPartitionNode
+		//设置新加的Channel的target节点为新创建的采样节点
 		sipChannel.setTarget(sipPlanNode);
 		this.plan.getAllNodes().add(sipPlanNode);
 		sourceNewOutputChannels.add(sipChannel);

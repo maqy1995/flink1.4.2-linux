@@ -444,6 +444,35 @@ public abstract class FileInputFormat<OT> extends RichInputFormat<OT, FileInputS
 	}
 
 	/**
+	 * maqy add
+	 * 用于得到Source节点的分块信息
+	 */
+	public BlockLocation[][] getBlocklocations() throws IOException {
+		final Path path = this.filePath;
+		List<FileStatus> files = new ArrayList<FileStatus>();
+
+		final FileSystem fs = path.getFileSystem();
+		final FileStatus pathFile = fs.getFileStatus(path);
+
+		if(pathFile.isDir()) {
+			addFilesInDir(path, files, true);
+		}else {
+			files.add(pathFile);
+		}
+		BlockLocation[][] blockLocations = new BlockLocation[files.size()][];
+		int i = 0;
+		for(final FileStatus file : files) {
+			long len = file.getLen();
+			if(len > 0) {
+				BlockLocation[] blocks = fs.getFileBlockLocations(file, 0, len);
+				blockLocations[i] = blocks;
+				i++;
+			}
+		}
+		return blockLocations;
+	}
+
+	/**
 	 * Computes the input splits for the file. By default, one file block is one split. If more splits
 	 * are requested than blocks are available, then a split may be a fraction of a block and splits may cross
 	 * block boundaries.

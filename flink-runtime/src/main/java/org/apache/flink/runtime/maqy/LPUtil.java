@@ -37,7 +37,7 @@ public class LPUtil {
 		expr.addTerm(1.0, z);
 		model.setObjective(expr, GRB.MINIMIZE);
 
-		int totalSize = 0;
+		long totalSize = 0;
 
 		// Add constraint: r1 + r2 + ... + rn = 1
 		expr = new GRBLinExpr();

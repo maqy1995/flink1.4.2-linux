@@ -26,10 +26,14 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.accumulators.Accumulator;
 import org.apache.flink.api.common.accumulators.AccumulatorHelper;
+import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.operators.util.UserCodeObjectWrapper;
 import org.apache.flink.api.common.operators.util.UserCodeWrapper;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.BlockLocation;
+import org.apache.flink.core.io.InputSplit;
+import org.apache.flink.core.io.InputSplitSource;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.StoppingException;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
@@ -67,10 +71,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.CoLocationGroup;
 import org.apache.flink.runtime.jobmanager.scheduler.LocationPreferenceConstraint;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmanager.scheduler.Scheduler;
-import org.apache.flink.runtime.maqy.LPUtil;
-import org.apache.flink.runtime.maqy.LocationInfo;
-import org.apache.flink.runtime.maqy.PercentRangeBoundaryBuilder;
-import org.apache.flink.runtime.maqy.PreferredSourceLocationsComparator;
+import org.apache.flink.runtime.maqy.*;
 import org.apache.flink.runtime.operators.util.TaskConfig;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.state.SharedStateRegistry;
@@ -285,6 +286,11 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** maqy add
 	 *  the source operator's prefer Location, is usually get through HDFS block information */
 	private ArrayList<TaskManagerLocation> preferredSourceLocations;
+
+	/**
+	 * maqy add
+	 */
+	HashMap<String, Long> blocksizePerHostname;
 
 	// ------ Fields that are only relevant for archived execution graphs ------------
 	private String jsonPlan;
@@ -812,25 +818,50 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 			//to do : 后续这里需要读取source的信息，比如HDFS的分块位置等，还需要考虑多个源，还需要考虑reduce任务并行度不一致
 			//注意：topologiallySorted中的JobVertex中一定是Source节点在前面
 			if(jobVertex.isInputVertex()){
-				//maqy add  初始化源数据所在节点信息
-				this.setPreferredSourceLocations();
+				//这里可以判断一下是否为空。
+				if(this.getPreferredSourceLocations() == null) {
+					try{
+						InputSplitSource<InputSplit> splitSource = (InputSplitSource<InputSplit>) jobVertex.getInputSplitSource();
+						if(splitSource instanceof FileInputFormat) {
+							//得到source的分块信息，这里为二维数组是因为可能有多个文件作为输入，例如输入的是一个文件夹的情况
+							BlockLocation[][] blockLocations = ((FileInputFormat) splitSource).getBlocklocations();
+							//遍历blockLocations，得到每个hostName上存储的的文件分块大小，将最大的那几个作为PreferredSourceLocations
+							//还得注意一下，如果得到的host和并行度不一致怎么办
+							//maqy add  初始化源数据所在节点信息
+							this.setBlocksizePerHostname(blockLocations);
+							this.setPreferredSourceLocations(this.getBlocksizePerHostname(), jobVertex.getParallelism());
+						}
+					}catch (IOException e) {
+						e.printStackTrace();
+					}
+				}else {
+					//不为空说明有两个source，则不能用这个。
+					break;
+				}
 			}
 
 			//如果是Histogram，则可以修改其中的MapFunction
-			if(jobVertex.getName().equals("RangePartition: Histogram")){
+			if(jobVertex.getName().equals("BandwidthPartition: Histogram")){
 				//1.获得PreferredSourceLocations的List
 				Collection<TaskManagerLocation> preferredSourceLocations = this.getPreferredSourceLocations();
 				//判断带宽信息对不对，如果不对则不修改：
-				if(this.IsBandWidthInfoCorrect(preferredSourceLocations)){
+				if(preferredSourceLocations!=null && !preferredSourceLocations.isEmpty() && this.IsBandWidthInfoCorrect(preferredSourceLocations)){
 					//2.根据PreferredSourceLocations得到计算各个比例的List
 					if(preferredSourceLocations != null || !preferredSourceLocations.isEmpty()){ //先判断preferredSourceLocations是否为空
 						//2.1先通过PreferredSourceLocations得到LocationInfo[]数组
 						LocationInfo[] locationInfos = new LocationInfo[preferredSourceLocations.size()];
 						int i=0;
+						HashMap<String, Long> blocksizePerHostname = this.getBlocksizePerHostname();
 						//初始化每个locationInfo信息
 						for(TaskManagerLocation tml : preferredSourceLocations){
-							locationInfos[i] = new LocationInfo(
-								tml.getHostname(), tml.addressString(), tml.getUplinkBandwidth(), tml.getDownlinkBandwidth());
+							Long blocksize = blocksizePerHostname.get(tml.getHostname());
+							if(blocksize != null) {
+								locationInfos[i] = new LocationInfo(
+									tml.getHostname(), tml.addressString(), tml.getUplinkBandwidth(), tml.getDownlinkBandwidth(), blocksize);
+							}else {
+								locationInfos[i] = new LocationInfo(
+									tml.getHostname(), tml.addressString(), tml.getUplinkBandwidth(), tml.getDownlinkBandwidth());
+							}
 							++i;
 						}
 						//2.2通过LocationInfo[]数组计算各个Instance的比例
@@ -857,17 +888,17 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 						TaskConfig taskConfig = new TaskConfig(jobVertex.getConfiguration());
 						UserCodeWrapper<PercentRangeBoundaryBuilder> userCodeWrapper = taskConfig.getStubWrapper(userClassLoader);
 						//getUserCodeObject()返回的用final修饰了，不能修改
-						PercentRangeBoundaryBuilder percentRangeBoundaryBuilder=userCodeWrapper.getUserCodeObject();
+						PercentRangeBoundaryBuilder percentRangeBoundaryBuilder = userCodeWrapper.getUserCodeObject();
 
 //					ArrayList<Integer> arrayList = new ArrayList<Integer>();
 //					arrayList.add(90);
 //					arrayList.add(10);
 						percentRangeBoundaryBuilder.setPercentPerChannel(proportions);
-						if(percentRangeBoundaryBuilder.getPercentPerChannel() != null){
+						if(percentRangeBoundaryBuilder.getPercentPerChannel() != null) {
 							System.out.println(percentRangeBoundaryBuilder.getPercentPerChannel());
 						}
 						//重新创建一个newUserCodeWrapper
-						UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper=new UserCodeObjectWrapper(percentRangeBoundaryBuilder);
+						UserCodeWrapper<PercentRangeBoundaryBuilder> newUserCodeWrapper = new UserCodeObjectWrapper(percentRangeBoundaryBuilder);
 						taskConfig.setStubWrapper(newUserCodeWrapper);
 						System.out.println("修改了比例");
 					}
@@ -1575,7 +1606,7 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/**
 	 * Updates the state of one of the ExecutionVertex's Execution attempts.
 	 * If the new status if "FINISHED", this also updates the accumulators.
-	 * 
+	 *
 	 * @param state The state update.
 	 * @return True, if the task update was properly applied, false, if the execution attempt was not found.
 	 */
@@ -1836,28 +1867,55 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	/** maqy add
 	 * set preferedSourceLocation  Collection<TaskManagerLocation> preferedSourceLocation
 	 */
-	public void setPreferredSourceLocations(){
+	public void setPreferredSourceLocations(HashMap<String, Long> blocksizePerHostname, int parallelism){
+		//先要把blocksizePerHostname按key排序，然后加入到preferredSourceLocations中，
+		//并且注意并行度和blocksizePerHostname不同时候的处理
+		List<Map.Entry<String, Long>> blocksizePerHostnameList = new ArrayList<Map.Entry<String, Long>>();
+		blocksizePerHostnameList.addAll(blocksizePerHostname.entrySet());
+		Collections.sort(blocksizePerHostnameList, new ValueComparator());
+
 		//先得到SlotProvider，即scheduler
-		SlotProvider slotProvider=this.getSlotProvider();
+		SlotProvider slotProvider = this.getSlotProvider();
 		if(slotProvider instanceof Scheduler){
 			//初始化preferedSourceLocation ，Execution中的preferredLocations用的是ArrayList
 			this.preferredSourceLocations = new ArrayList<>();
 			//得到所有的instance
 			Map<String, List<Instance>> allInstancesByHost = ((Scheduler) slotProvider).getInstancesByHost();
 
-			//遍历Map<String, List<Instance>> allInstancesByHost,目前这里手动写slave1和slave2
-			for(Map.Entry<String, List<Instance>> entry : allInstancesByHost.entrySet()){
-				if(entry.getKey().equals("slave1") || entry.getKey().equals("slave2")){
-					//得到是"slave1"或者"slave2"的list集合
-					List<Instance> instances =entry.getValue();
-					for(Instance instance : instances){
-						//将满足条件的每个Instance的location加入到preferedSourceLocation
-						preferredSourceLocations.add(instance.getTaskManagerLocation());
+			Iterator<Map.Entry<String, Long>> entryIterator = blocksizePerHostnameList.iterator();
+			while (preferredSourceLocations.size() < parallelism) {
+				if(entryIterator.hasNext()){
+					Map.Entry<String, Long> hostAndSize = entryIterator.next();
+					for(Map.Entry<String, List<Instance>> entry : allInstancesByHost.entrySet()){
+						if(entry.getKey().equals(hostAndSize.getKey())){
+							List<Instance> instances = entry.getValue();
+							preferredSourceLocations.add(instances.get(0).getTaskManagerLocation());
+						}
 					}
+				}else {
+					//有数据的host数量比需要的parallelism数量少,则随机添加其他的,以后也可以考虑先添加带宽大的
+					for(Map.Entry<String, List<Instance>> entry : allInstancesByHost.entrySet()) {
+						if(preferredSourceLocations.size() < parallelism){
+							TaskManagerLocation taskManagerLocation= entry.getValue().get(0).getTaskManagerLocation();
+							if(!preferredSourceLocations.contains(taskManagerLocation)) {
+								preferredSourceLocations.add(taskManagerLocation);
+							}
+						}else {
+							//如果够了就break
+							break;
+						}
+					}
+					//可能把所有的allInstancesByHost.entrySet()都遍历了一遍还是不够，可能一个slave上有多个instance，
+					//这种情况是不允许的，直接置为空,再到以后去判断preferredSourceLocation是否和并行度匹配
+					if(preferredSourceLocations.size() < parallelism){
+						preferredSourceLocations = null;
+					}
+					break;
 				}
 			}
+
 			// 对preferredSourceLocations排序
-			Collections.sort(preferredSourceLocations,new PreferredSourceLocationsComparator());
+			//Collections.sort(preferredSourceLocations,new PreferredSourceLocationsComparator());
 		}
 	}
 
@@ -1872,11 +1930,44 @@ public class ExecutionGraph implements AccessExecutionGraph, Archiveable<Archive
 	 * get preferedSourceLocation
 	 */
 	public boolean IsBandWidthInfoCorrect(Collection<TaskManagerLocation> taskManagerLocations){
+		if(taskManagerLocations == null || taskManagerLocations.isEmpty()){
+			return false;
+		}
 		for(TaskManagerLocation taskManagerLocation : taskManagerLocations){
-			if(taskManagerLocation.getUplinkBandwidth() == -1 || taskManagerLocation.getDownlinkBandwidth() == -1){
+			if(taskManagerLocation.getUplinkBandwidth() <= 0 || taskManagerLocation.getDownlinkBandwidth() <= 0){
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * maqy add
+	 * 设置每个hostname的Instance上的分块大小
+	 */
+	public void setBlocksizePerHostname(BlockLocation[][] blockLocations) throws IOException {
+		this.blocksizePerHostname = new HashMap<String, Long>();
+		for(BlockLocation[] blocks : blockLocations) {
+			for(BlockLocation blockLocation : blocks) {
+				String[] hostnames = blockLocation.getHosts();
+				for(String hostname : hostnames) {
+					Long value = blocksizePerHostname.get(hostname);
+					if(value == null) {
+						//首次添加
+						blocksizePerHostname.put(hostname, blockLocation.getLength());
+					}else {
+						//说明hostname已经存在
+						blocksizePerHostname.replace(hostname,value + blockLocation.getLength());
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * maqy add
+	 */
+	public HashMap<String, Long> getBlocksizePerHostname() {
+		return this.blocksizePerHostname;
 	}
 }

@@ -353,11 +353,11 @@ public class BatchTask<S extends Function, OT> extends AbstractInvokable impleme
 			}
 
 			//maqy add
-			if(headName.equals("RangePartition: PreparePartition")){
+			if(headName.equals("BandwidthPartition: Histogram")){
 				//如果是PreparePartition节点则根据广播来的数据界限重新初始化output
 				List<Object> broadcastVariable = runtimeUdfContext.getBroadcastVariable("RangeBoundaries");
 				if (broadcastVariable == null || broadcastVariable.size() != 1) {
-					throw new RuntimeException("AssignRangePartition require a single RangeBoundaries as broadcast input.");
+					throw new RuntimeException("Assign Bandwidth partition require a single RangeBoundaries as broadcast input.");
 				}
 				Object[][] boundaryObjects = (Object[][]) broadcastVariable.get(0);
 				//这里是可以确定广播变量只有一个的，因为该算子和其的输入输出边都是我自己构造的

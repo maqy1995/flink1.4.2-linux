@@ -9,7 +9,7 @@ public class LocationInfo {
 	//IP地址
 	private final String IP;
 	//存储的数据大小，现在默认都是一个常量
-	private int dataSize=100;
+	private long dataSize=5000L;
 	//上行速度
 	private int upLink;
 	//下行速度
@@ -17,7 +17,7 @@ public class LocationInfo {
 	//应该分配的比例,用int表示百分比。
 	private int proportion;
 	//Constructor
-	public LocationInfo(String hostname, String IP, int upLink, int downLink, int dataSize){
+	public LocationInfo(String hostname, String IP, int upLink, int downLink, long dataSize){
 		this.hostname=hostname;
 		this.IP=IP;
 		this.upLink=upLink;
@@ -63,7 +63,7 @@ public class LocationInfo {
 		this.proportion = proportion;
 	}
 
-	public int getDataSize() {
+	public long getDataSize() {
 		return dataSize;
 	}
 
