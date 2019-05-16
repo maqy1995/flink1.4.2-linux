@@ -1,4 +1,4 @@
-mvn clean package -DskipTests
+mvn clean package -DskipTests -Dcheckstyle.skip=true
 
 
  mvn install -DskipTests -Drat.skip=true
