@@ -819,7 +819,7 @@ public class Execution implements AccessExecution, Archiveable<ArchivedExecution
 							consumerVertex.scheduleForExecution(
 								consumerVertex.getExecutionGraph().getSlotProvider(),
 								consumerVertex.getExecutionGraph().isQueuedSchedulingAllowed(),
-								LocationPreferenceConstraint.ANY); // there must be at least one known location
+								LocationPreferenceConstraint.ALL); // there must be at least one known location
 						} catch (Throwable t) {
 							consumerVertex.fail(new IllegalStateException("Could not schedule consumer " +
 									"vertex " + consumerVertex, t));
