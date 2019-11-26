@@ -183,11 +183,19 @@ public class LocalExecutor extends PlanExecutor {
 			try {
 				Configuration configuration = this.flink.configuration();
 
+				long start = System.currentTimeMillis();
+				System.out.println("开始时间为:" + start + "ms");
+
 				Optimizer pc = new Optimizer(new DataStatistics(), configuration);
 				OptimizedPlan op = pc.compile(plan);
 
 				JobGraphGenerator jgg = new JobGraphGenerator(configuration);
 				JobGraph jobGraph = jgg.compileJobGraph(op, plan.getJobId());
+
+				long end = System.currentTimeMillis();
+				System.out.println("结束时间为：" + end + "ms");
+
+				System.out.println("总需时间为：" + (end - start) + "ms");
 
 				boolean sysoutPrint = isPrintingStatusDuringExecution();
 				return flink.submitJobAndWait(jobGraph, sysoutPrint);
