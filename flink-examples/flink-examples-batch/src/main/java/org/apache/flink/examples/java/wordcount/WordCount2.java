@@ -19,6 +19,9 @@
 package org.apache.flink.examples.java.wordcount;
 
 import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.operators.Order;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -35,7 +38,7 @@ public class WordCount2 {
 	public static void main(String[] args) throws Exception {
 
 		// set up the execution environment
-		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
 
 		env.setParallelism(1);
 		// get input data
@@ -54,10 +57,10 @@ public class WordCount2 {
 //		DataStream<Tuple3<String, Integer, Integer>> c = b.keyBy(0)
 //			.sum(1);
 
-		DataStream<Tuple3<String, Integer, Integer>> c = env.readTextFile("/home/maqy/桌面/out/test")
+		DataSet<Tuple3<String, Integer, Integer>> c = env.readTextFile("/home/maqy/桌面/output/test")
 			.flatMap(new LineSplitter2())
-			.keyBy(0)
-			.sum(1);
+			.sortPartition(0,Order.ASCENDING);
+
 		// execute and print result
 		c.writeAsText("/home/maqy/桌面/out/out1");
 
