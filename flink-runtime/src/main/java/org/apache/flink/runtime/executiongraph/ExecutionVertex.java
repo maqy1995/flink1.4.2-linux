@@ -531,12 +531,13 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 				}
 				// keep the locations of the input with the least preferred locations
 				// 保留具有最少分布位置的输入的位置
-				if (locations.isEmpty() || // nothing assigned yet
-						(!locationsResult.isEmpty() && locationsResult.size() < locations.size())) {
-					// current input has fewer preferred locations
-					locations.clear();
-					locations.addAll(locationsResult);
-				}
+//				if (locations.isEmpty() || // nothing assigned yet
+//					(!locationsResult.isEmpty() && locationsResult.size() < locations.size())) {
+//					// current input has fewer preferred locations
+//					locations.clear();
+//					locations.addAll(locationsResult);
+//				}
+				locations.addAll(locationsResult);
 			}
 
 			return locations.isEmpty() ? Collections.emptyList() : locations;
