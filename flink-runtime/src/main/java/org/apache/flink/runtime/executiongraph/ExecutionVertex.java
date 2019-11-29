@@ -491,9 +491,9 @@ public class ExecutionVertex implements AccessExecutionVertex, Archiveable<Archi
 		}
 		else {
 			//原来此处是HashSet，为了保证顺序，修改为LinkedHashSet,注意，现在没有考虑多source的情况。
-			Set<CompletableFuture<TaskManagerLocation>> locationsResult = new LinkedHashSet<>(getTotalNumberOfParallelSubtasks());//设置的有顺序的最后的分布
-			Set<CompletableFuture<TaskManagerLocation>> locations = new LinkedHashSet<>(getTotalNumberOfParallelSubtasks()); //结果分布
-			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new LinkedHashSet<>(getTotalNumberOfParallelSubtasks()); //输入的分布
+			Set<CompletableFuture<TaskManagerLocation>> locationsResult = new HashSet<>(getTotalNumberOfParallelSubtasks());//设置的有顺序的最后的分布
+			Set<CompletableFuture<TaskManagerLocation>> locations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //结果分布
+			Set<CompletableFuture<TaskManagerLocation>> inputLocations = new HashSet<>(getTotalNumberOfParallelSubtasks()); //输入的分布
 
 			// go over all inputs 遍历所有inputs，如果有多个JobVertex输入的话，就会有多个源
 			for (int i = 0; i < inputEdges.length; i++) {
